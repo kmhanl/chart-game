@@ -303,7 +303,7 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 // 차트 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number; style?: React.CSSProperties }) {
+function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b, n = candles.length;
@@ -323,7 +323,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
     return pts.length ? <polyline points={pts.join(" ")} fill="none" stroke={col} strokeWidth="1.5" strokeOpacity="0.9" /> : null;
   };
   return (
-    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block", ...style }}>
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: "block", height: svgHeight ?? "100%", ...style }}>
       {lbls.map((l, i) => (
         <g key={i}>
           <line x1={PAD.l} y1={l.y} x2={PAD.l + W} y2={l.y} stroke="#e9ecef" strokeWidth="1" />
@@ -810,9 +810,9 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         <div><div style={{ fontSize: 9, color: C.muted }}>평가손익</div><div style={{ fontSize: 12, fontWeight: 700, color: holdPnlPct >= 0 ? C.red : C.blue }}>{avgCostKRW > 0 ? fmtPct(holdPnlPct) : "—"}</div></div>
       </div>
 
-      {/* 차트 - flex:1로 남은 공간 모두 차지 */}
-      <div style={{ flex: 1, padding: "4px 10px 0", display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ flex: 1, background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {/* 차트 */}
+      <div style={{ padding: "4px 10px 0", flexShrink: 0 }}>
+        <div style={{ background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
           <div style={{ padding: "4px 10px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
               <span key={l} style={{ fontSize: 9, color: col, display: "flex", alignItems: "center", gap: 2 }}>
@@ -824,9 +824,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-            <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
-          </div>
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} svgHeight="calc(100dvh - 418px)" />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={28} interval={intervalMode} /></div>
         </div>
       </div>
