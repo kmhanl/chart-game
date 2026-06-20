@@ -824,7 +824,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} svgHeight="calc(100dvh - 418px)" />
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} svgHeight="calc(100dvh - 460px)" />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={28} interval={intervalMode} /></div>
         </div>
       </div>
