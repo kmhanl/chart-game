@@ -20,7 +20,8 @@ export async function saveFeedback({
 }: SaveFeedbackParams): Promise<boolean> {
   const supabase = createClient();
 
-  const { error } = await supabase.from("feedbacks").insert({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).from("feedbacks").insert({
     session_id: sessionId,
     user_id:    userId,
     rating,

@@ -15,6 +15,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { saveGameResult } from "@/lib/saveGameResult";
+import GameApp from "@/components/GameApp";
 
 // ⬇️ App.jsx를 이 경로로 이동 후 named export로 변경
 // import { GameApp } from "@/components/GameApp";

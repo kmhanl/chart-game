@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@/lib/supabase/client";
 
 interface Trade {
@@ -28,27 +29,13 @@ interface SaveGameResultParams {
 
 const INIT_CASH = 10_000_000;
 
-// ──────────────────────────────────────────────────────────
-// 게임 종료 시 호출
-// 1) game_sessions INSERT → session id 반환
-// 2) trade_logs 일괄 INSERT
-// ──────────────────────────────────────────────────────────
 export async function saveGameResult({
-  userId,
-  trades,
-  turnScores,
-  totalAsset,
-  market,
-  stockMeta,
-  interval,
-  mission,
-  followScore,
+  userId, trades, turnScores, totalAsset,
+  market, stockMeta, interval, mission, followScore,
 }: SaveGameResultParams): Promise<string | null> {
-  const supabase = createClient();
-
+  const supabase = createClient() as any;
   const returnPct = ((totalAsset / INIT_CASH) - 1) * 100;
 
-  // ── 1) game_sessions ──
   const { data: session, error: sessionError } = await supabase
     .from("game_sessions")
     .insert({
@@ -72,7 +59,6 @@ export async function saveGameResult({
     return null;
   }
 
-  // ── 2) trade_logs (거래가 있을 때만) ──
   if (trades.length > 0) {
     const { error: tradeError } = await supabase
       .from("trade_logs")
@@ -87,11 +73,7 @@ export async function saveGameResult({
           snap_json:  t.snap,
         }))
       );
-
-    if (tradeError) {
-      // trade_logs 실패는 치명적이지 않음 — 경고만 출력
-      console.warn("[saveGameResult] trade_logs 저장 실패:", tradeError);
-    }
+    if (tradeError) console.warn("[saveGameResult] trade_logs 저장 실패:", tradeError);
   }
 
   return session.id;
