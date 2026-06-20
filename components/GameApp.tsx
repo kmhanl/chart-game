@@ -323,7 +323,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
     return pts.length ? <polyline points={pts.join(" ")} fill="none" stroke={col} strokeWidth="1.5" strokeOpacity="0.9" /> : null;
   };
   return (
-    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block", ...style }}>
+	<svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
       {lbls.map((l, i) => (
         <g key={i}>
           <line x1={PAD.l} y1={l.y} x2={PAD.l + W} y2={l.y} stroke="#e9ecef" strokeWidth="1" />
@@ -347,7 +347,7 @@ function VolumeChart({ candles, width = 700, height = 48 }: { candles: Candle[];
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b;
   const n = candles.length, maxV = Math.max(...candles.map(c => c.vol), 1), cw = Math.max(2, (W / n) * 0.7);
   return (
-    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block", ...style }}>
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
       {candles.map((c, i) => {
         const x = PAD.l + (i / Math.max(n - 1, 1)) * W, bH = (c.vol / maxV) * H;
         return <rect key={i} x={x - cw / 2} y={PAD.t + H - bH} width={cw} height={bH} fill={c.close >= c.open ? "#e0313155" : "#1971c255"} />;
