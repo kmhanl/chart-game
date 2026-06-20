@@ -305,7 +305,7 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number; style?: React.CSSProperties }) {
   if (!candles.length) return null;
-  const PAD = { l: 10, r: 66, t: 16, b: 24 };
+  const PAD = { l: 10, r: 50, t: 8, b: 8 };
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b, n = candles.length;
   const allP = candles.flatMap(c => [c.high, c.low]);
   const maV  = [...ma5, ...ma10, ...ma240].filter((v): v is number => v != null);
@@ -813,18 +813,20 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       {/* 차트 - flex:1로 남은 공간 모두 차지 */}
       <div style={{ flex: 1, padding: "4px 10px 0", display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ flex: 1, background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "7px 12px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ padding: "4px 10px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
-              <span key={l} style={{ fontSize: 10, color: col, display: "flex", alignItems: "center", gap: 3 }}>
+              <span key={l} style={{ fontSize: 9, color: col, display: "flex", alignItems: "center", gap: 2 }}>
                 <span style={{ display: "inline-block", width: 12, height: 2, background: col, borderRadius: 1 }} />{l}
               </span>
             ))}
             <div style={{ marginLeft: "auto", textAlign: "right" }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: isUp ? C.red : C.blue, lineHeight: 1 }}>{isQQQ ? fmtUSD(currentPrice) : fmtKRW(currentPrice)}</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: isUp ? C.red : C.blue, lineHeight: 1 }}>{isQQQ ? fmtUSD(currentPrice) : fmtKRW(currentPrice)}</div>
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1 }} />
+          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+            <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+          </div>
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={28} interval={intervalMode} /></div>
         </div>
       </div>
