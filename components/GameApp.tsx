@@ -537,11 +537,12 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const [scoreModal,   setScoreModal]  = useState<TurnScore | null>(null);
   const [showResult,   setShowResult]  = useState(false);
   const [diagOpen,     setDiagOpen]    = useState(true);
+  const [lastGameAsset, setLastGameAsset] = useState<number>(INIT_CASH);
   const modalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const WINDOW = intervalMode === "1wk" ? 52 : 24;
 
-  const startGame = async (mkt: "KOSPI" | "QQQ", itv = intervalMode, ms = mission) => {
+  const startGame = async (mkt: "KOSPI" | "QQQ", itv = intervalMode, ms = mission, nextCash?: number) => {
     const isQ = mkt === "QQQ";
     setLoadErr(""); setScreen("loading");
     const shuffled = [...UNIVERSE[mkt]].sort(() => Math.random() - 0.5);
@@ -557,13 +558,13 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         for (let a = 0; a < 30; a++) {
           const s = minStart + Math.floor(Math.random() * (maxStart - minStart));
           const p = isQ ? candles[s].close * EXCHANGE : candles[s].close;
-          if (p < INIT_CASH) { validStart = s; break; }
+          if (p < (nextCash ?? INIT_CASH)) { validStart = s; break; }
         }
         if (validStart < 0) continue;
         setMarket(mkt); setIsQQQ(isQ); setIntervalMode(itv); setMission(ms);
         setStockMeta(candidate); setAllCandles(candles);
         setGameStart(validStart); setCurIdx(validStart);
-        setCash(INIT_CASH); setHoldings(0); setAvgCostKRW(0);
+        setCash(nextCash ?? INIT_CASH); setHoldings(0); setAvgCostKRW(0);
         setTrades([]); setTurnScores([]);
         setBuyPct(10); setCustomQty(""); setBuyMode("pct"); setSellMode("all");
         setTurn(0); setTradeModal(null); setScoreModal(null); setShowResult(false);
@@ -711,6 +712,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 		  mission,
 		  followScore,
 		});
+		setLastGameAsset(totalAsset);
 		return;
 	  }
 	  setCurIdx(i => i + 1);
@@ -742,7 +744,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           stockMeta={stockMeta} market={market} interval={intervalMode}
           startDate={gameStartDate} endDate={gameEndDate}
           onClose={onBackToLobby}
-          onRestart={() => startGame(market, intervalMode, mission)}
+          onRestart={() => startGame(market, intervalMode, mission, lastGameAsset)}
         />
       )}
 
