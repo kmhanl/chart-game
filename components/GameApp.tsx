@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 // components/GameApp.tsx 상단에 추가
 "use client";
 
