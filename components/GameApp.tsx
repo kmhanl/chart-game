@@ -443,7 +443,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const dedupGood = [...new Set(goodPoints)], dedupBad = [...new Set(badPoints)];
   const iLabel = interval === "1wk" ? "주봉" : "월봉";
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 950, padding: 16 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }}>
       <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 12px 60px rgba(0,0,0,.2)", width: "min(480px, 96vw)", maxHeight: "90vh", overflowY: "auto", animation: "fadeInScale .2s ease" }}>
         <div style={{ background: "#f8f9fa", padding: "24px 24px 20px", borderBottom: "1px solid #e9ecef", borderRadius: "20px 20px 0 0", textAlign: "center" }}>
           <div style={{ fontSize: 12, color: "#adb5bd", marginBottom: 4 }}>{market} · {stockMeta?.name} · {iLabel}</div>
@@ -682,24 +682,39 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     recordTurnScore("sell");
   };
 
-  const nextTurn = () => {
-    const lastTrade = trades[trades.length - 1];
-    if (!lastTrade || lastTrade.turn !== turn) {
-      const sc = scoreTurnAction("hold", snap, diagnosis);
-      setTurnScores(p => [...p, sc]);
-    }
-    if (turn >= MAX_TURNS - 1) {
-      setShowResult(true);
-      // DB 저장
-      const totalMaxScore = turnScores.reduce((s, t) => s + t.maxScore, 0);
-      const totalGained   = turnScores.reduce((s, t) => s + t.score, 0);
-      const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
-      onGameEnd({ trades, turnScores, totalAsset, market, stockMeta: stockMeta!, interval: intervalMode, mission, followScore });
-      return;
-    }
-    setCurIdx(i => i + 1);
-    setTurn(t => t + 1);
-  };
+	const nextTurn = () => {
+	  const lastTrade = trades[trades.length - 1];
+	  const didTradeThisTurn = lastTrade && lastTrade.turn === turn;
+
+	  // 최신 turnScores 직접 계산 (클로저 문제 방지)
+	  const latestScores = didTradeThisTurn
+		? turnScores
+		: [...turnScores, scoreTurnAction("hold", snap, diagnosis)];
+
+	  if (!didTradeThisTurn) {
+		setTurnScores(latestScores);
+	  }
+
+	  if (turn >= MAX_TURNS - 1) {
+		setShowResult(true);
+		const totalMaxScore = latestScores.reduce((s, t) => s + t.maxScore, 0);
+		const totalGained   = latestScores.reduce((s, t) => s + t.score, 0);
+		const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
+		onGameEnd({
+		  trades,
+		  turnScores: latestScores,
+		  totalAsset,
+		  market,
+		  stockMeta: stockMeta!,
+		  interval: intervalMode,
+		  mission,
+		  followScore,
+		});
+		return;
+	  }
+	  setCurIdx(i => i + 1);
+	  setTurn(t => t + 1);
+	};
 
   const pnlColor = pnlPct >= 0 ? C.red : C.blue;
 
