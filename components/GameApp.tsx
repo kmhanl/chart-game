@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import type { User } from "@supabase/supabase-js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -303,7 +303,7 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 // 차트 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270 }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number }) {
+function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number; style?: React.CSSProperties }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 66, t: 16, b: 24 };
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b, n = candles.length;
@@ -323,7 +323,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270 }: {
     return pts.length ? <polyline points={pts.join(" ")} fill="none" stroke={col} strokeWidth="1.5" strokeOpacity="0.9" /> : null;
   };
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
+    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block", ...style }}>
       {lbls.map((l, i) => (
         <g key={i}>
           <line x1={PAD.l} y1={l.y} x2={PAD.l + W} y2={l.y} stroke="#e9ecef" strokeWidth="1" />
@@ -347,7 +347,7 @@ function VolumeChart({ candles, width = 700, height = 48 }: { candles: Candle[];
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b;
   const n = candles.length, maxV = Math.max(...candles.map(c => c.vol), 1), cw = Math.max(2, (W / n) * 0.7);
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
+    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block", ...style }}>
       {candles.map((c, i) => {
         const x = PAD.l + (i / Math.max(n - 1, 1)) * W, bH = (c.vol / maxV) * H;
         return <rect key={i} x={x - cw / 2} y={PAD.t + H - bH} width={cw} height={bH} fill={c.close >= c.open ? "#e0313155" : "#1971c255"} />;
@@ -785,9 +785,9 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         <div><div style={{ fontSize: 9, color: C.muted }}>평가손익</div><div style={{ fontSize: 12, fontWeight: 700, color: holdPnlPct >= 0 ? C.red : C.blue }}>{avgCostKRW > 0 ? fmtPct(holdPnlPct) : "—"}</div></div>
       </div>
 
-      {/* 차트 */}
-      <div style={{ padding: "4px 10px 0" }}>
-        <div style={{ background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+      {/* 차트 - flex:1로 남은 공간 모두 차지 */}
+      <div style={{ flex: 1, padding: "4px 10px 0", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ flex: 1, background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "7px 12px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.border}` }}>
             {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
               <span key={l} style={{ fontSize: 10, color: col, display: "flex", alignItems: "center", gap: 3 }}>
@@ -799,14 +799,14 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} height={185} />
-          <div style={{ borderTop: `1px solid ${C.border}` }}><VolumeChart candles={chartCandles} height={32} /></div>
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1 }} />
+          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={32} /></div>
         </div>
       </div>
 
       {/* 캔들 상태 + MA 상태 */}
       {candleState && (
-        <div style={{ padding: "4px 10px 0", display: "flex", gap: 5 }}>
+        <div style={{ padding: "4px 10px 0", display: "flex", gap: 5, flexShrink: 0 }}>
           <div style={{ flex: "0 0 auto", minWidth: 118, background: candleState.bg, borderRadius: 9, border: `1px solid ${candleState.color}33`, padding: "8px 10px", display: "flex", alignItems: "center", gap: 7 }}>
             <span style={{ fontSize: 16 }}>{candleState.icon}</span>
             <div>
@@ -901,14 +901,28 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           {/* 추세 진단 버튼 */}
           {diagnosis && (
             <button onClick={() => setDiagOpen(true)} style={{
-              width: "100%", marginBottom: 8, padding: "7px 12px",
-              borderRadius: 8, border: `1px solid #d0bfff`,
+              width: "100%", marginBottom: 8, padding: "9px 14px",
+              borderRadius: 8, border: `1.5px solid #7048e8`,
               background: "#f3f0ff", color: C.accent,
               fontSize: 12, fontWeight: 700, cursor: "pointer",
               fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between",
-            }}>
-              <span>📊 추세 진단</span>
-              <span style={{ fontSize: 11, color: diagnosis.buyFitColor, fontWeight: 800 }}>{diagnosis.buyFit} ↑</span>
+              boxShadow: "0 1px 4px rgba(112,72,232,0.15)",
+              transition: "opacity .15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = "0.8"; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = "1"; }}
+            onTouchStart={e => { e.currentTarget.style.opacity = "0.7"; }}
+            onTouchEnd={e => { e.currentTarget.style.opacity = "1"; }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>📊</span>
+                <span>추세 진단</span>
+                <span style={{ fontSize: 10, background: "#7048e8", color: "#fff", borderRadius: 4, padding: "1px 6px" }}>탭하기</span>
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 11, color: diagnosis.buyFitColor, fontWeight: 800 }}>{diagnosis.buyFit}</span>
+                <span style={{ fontSize: 13 }}>↑</span>
+              </span>
             </button>
           )}
 
