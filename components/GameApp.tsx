@@ -503,6 +503,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
           <button onClick={onRestart} style={{ flex: 2, padding: "13px", borderRadius: 10, border: "none", background: "#212529", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>🔄 새 게임</button>
         </div>
       </div>
+      </div>{/* 스크롤 영역 끝 */}
     </div>
   );
 }
@@ -731,7 +732,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 
   // ════ 게임 ════
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Pretendard','Noto Sans KR',sans-serif", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100dvh", background: C.bg, color: C.text, fontFamily: "'Pretendard','Noto Sans KR',sans-serif", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <style>{`@keyframes fadeInScale{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <TradeModal msg={tradeModal} />
@@ -747,7 +748,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       )}
 
       {/* 헤더 */}
-      <div style={{ background: C.bg, borderBottom: `1px solid ${C.border}`, padding: "9px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: C.bg, borderBottom: `1px solid ${C.border}`, padding: "5px 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <button onClick={onBackToLobby} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: "2px 6px", fontFamily: "inherit" }}>← 로비</button>
           <span style={{ fontWeight: 700, fontSize: 14 }}>차트게임 {isQQQ ? "🇺🇸" : "🇰🇷"}</span>
@@ -765,7 +766,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       </div>
 
       {/* 자산 요약 */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "7px 14px", display: "flex", gap: 16, flexWrap: "wrap" }}>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "4px 10px", display: "flex", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 9, color: C.muted }}>총 자산</div>
           {isQQQ ? <><div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{fmtUSD(totalAsset / EXCHANGE)}</div><div style={{ fontSize: 9, color: C.muted }}>({fmtKRW(totalAsset)})</div></> : <div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{fmtKRW(totalAsset)}</div>}
@@ -784,7 +785,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       </div>
 
       {/* 차트 */}
-      <div style={{ padding: "8px 10px 0" }}>
+      <div style={{ padding: "4px 10px 0" }}>
         <div style={{ background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
           <div style={{ padding: "7px 12px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${C.border}` }}>
             {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
@@ -797,14 +798,16 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} />
-          <div style={{ borderTop: `1px solid ${C.border}` }}><VolumeChart candles={chartCandles} /></div>
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} height={175} />
+          <div style={{ borderTop: `1px solid ${C.border}` }}><VolumeChart candles={chartCandles} height={32} /></div>
         </div>
       </div>
 
+      {/* 스크롤 영역 */}
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       {/* 캔들 상태 + MA 상태 */}
       {candleState && (
-        <div style={{ padding: "6px 10px 0", display: "flex", gap: 6 }}>
+        <div style={{ padding: "4px 10px 0", display: "flex", gap: 5 }}>
           <div style={{ flex: "0 0 auto", minWidth: 118, background: candleState.bg, borderRadius: 9, border: `1px solid ${candleState.color}33`, padding: "8px 10px", display: "flex", alignItems: "center", gap: 7 }}>
             <span style={{ fontSize: 16 }}>{candleState.icon}</span>
             <div>
@@ -832,7 +835,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 
       {/* 추세 진단 */}
       {diagnosis && (
-        <div style={{ padding: "6px 10px 0" }}>
+        <div style={{ padding: "4px 10px 0" }}>
           <div style={{ background: "#fafafa", borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
             <button onClick={() => setDiagOpen(v => !v)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>📊 추세 진단</span>
@@ -872,7 +875,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       )}
 
       {/* 매매 패널 */}
-      <div style={{ padding: "6px 10px 14px" }}>
+      <div style={{ padding: "4px 10px 8px" }}>
         <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: "12px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, padding: "7px 10px", background: C.bg, borderRadius: 8, border: `1px solid ${C.border}` }}>
             <div>
@@ -925,6 +928,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           </div>
         </div>
       </div>
+      </div>{/* 스크롤 영역 끝 */}
     </div>
   );
 }
