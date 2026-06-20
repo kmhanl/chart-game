@@ -503,7 +503,6 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
           <button onClick={onRestart} style={{ flex: 2, padding: "13px", borderRadius: 10, border: "none", background: "#212529", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>🔄 새 게임</button>
         </div>
       </div>
-      </div>{/* 스크롤 영역 끝 */}
     </div>
   );
 }
@@ -874,8 +873,9 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         </div>
       )}
 
+      </div>{/* 스크롤 영역 끝 */}
       {/* 매매 패널 */}
-      <div style={{ padding: "4px 10px 8px" }}>
+      <div style={{ padding: "4px 10px 8px", flexShrink: 0 }}>
         <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: "12px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, padding: "7px 10px", background: C.bg, borderRadius: 8, border: `1px solid ${C.border}` }}>
             <div>
@@ -928,7 +928,6 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           </div>
         </div>
       </div>
-      </div>{/* 스크롤 영역 끝 */}
     </div>
   );
 }
