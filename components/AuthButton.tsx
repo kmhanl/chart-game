@@ -20,15 +20,21 @@ export default function AuthButton({ user }: Props) {
 
   const supabase = createClient();
 
-  const signInWithGoogle = async () => {
-    setLoading(true);
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `https://chart-game-chi.vercel.app/auth/callback`,
-      },
-    });
-  };
+	const signInWithGoogle = async () => {
+	  // 카카오톡 인앱브라우저 감지
+	  const isKakao = /KAKAOTALK/i.test(navigator.userAgent);
+	  if (isKakao) {
+		alert("카카오톡에서는 Google 로그인이 제한됩니다.\n우측 하단 ⋯ 버튼 → '외부 브라우저로 열기'를 눌러주세요.");
+		return;
+	  }
+	  setLoading(true);
+	  await supabase.auth.signInWithOAuth({
+		provider: "google",
+		options: {
+		  redirectTo: `https://chart-game-chi.vercel.app/auth/callback`,
+		},
+	  });
+	};
 
   const signOut = async () => {
     setLoading(true);
