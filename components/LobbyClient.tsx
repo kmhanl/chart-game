@@ -65,7 +65,7 @@ export default function LobbyClient({ user }: Props) {
     if (!currentUser) {
       await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback?next=/game` },
+		options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
       return;
     }
