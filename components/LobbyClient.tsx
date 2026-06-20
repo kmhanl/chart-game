@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 const C = {
   bg: "#fff", surface: "#f8f9fa", border: "#e9ecef", border2: "#dee2e6",
   text: "#212529", sub: "#495057", muted: "#adb5bd",
-  accent: "#7048e8",
+  accent: "#7048e8", green: "#2f9e44", red: "#e03131", blue: "#1971c2",
 };
 
 const MISSIONS = [
@@ -18,45 +18,145 @@ const MISSIONS = [
   { id: "ma240_breakout",    icon: "🚀", title: "240MA 돌파 매수", desc: "장기 하락 후 240MA를 상향 돌파하는 순간을 포착하세요", hint: "주가가 240MA 아래에 오래 있다가 처음 위로 올라오는 봉이 핵심입니다" },
 ];
 
-interface Props {
-  user: User | null;
+const INIT_CASH = 10_000_000;
+const fmtKRW = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
+const fmtPct = (n: number) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
+
+interface GameSession {
+  final_asset: number;
+  return_pct: number;
+  ticker_name: string;
+  market: string;
+  played_at: string;
 }
+
+interface Props { user: User | null; }
 
 export default function LobbyClient({ user }: Props) {
   const router = useRouter();
-  const supabase = createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = createClient() as any;
 
   const [intervalMode, setIntervalMode] = useState<"1wk" | "1mo">("1wk");
   const [mission,      setMission]      = useState<string | null>(null);
+  const [mounted,      setMounted]      = useState(false);
 
-  // ─────────────────────────────────────────────────────────
-  // Hydration 에러 해결: user prop이 서버/클라이언트 간 다를 수 있으므로
-  // 조건부 렌더(user에 의존하는 UI)를 mounted 이후에만 표시
-  // ─────────────────────────────────────────────────────────
-  const [mounted, setMounted] = useState(false);
+  // 자산 관련 state
+  const [currentAsset,  setCurrentAsset]  = useState<number | null>(null);
+  const [recentSessions, setRecentSessions] = useState<GameSession[]>([]);
+  const [loadingAsset,  setLoadingAsset]  = useState(false);
+
   useEffect(() => { setMounted(true); }, []);
 
-  const handleStartGame = async (market: "KOSPI" | "QQQ") => {
-    if (!user) {
-      await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback?next=/game` },
-      });
-      return;
-    }
-    const params = new URLSearchParams({ market, interval: intervalMode, ...(mission ? { mission } : {}) });
-    router.push(`/game?${params.toString()}`);
-  };
+  // 로그인 시 최신 자산 + 최근 게임 기록 불러오기
+	// 변경 - 클라이언트에서 직접 세션 확인
+	useEffect(() => {
+	  const fetchAsset = async () => {
+		// 클라이언트에서 직접 유저 확인
+		const { data: { user: currentUser } } = await supabase.auth.getUser();
+		if (!currentUser) return;
+
+		setLoadingAsset(true);
+		const { data } = await supabase
+		  .from("game_sessions")
+		  .select("final_asset, return_pct, ticker_name, market, played_at")
+		  .eq("user_id", currentUser.id)
+		  .order("played_at", { ascending: false })
+		  .limit(5);
+		if (data && data.length > 0) {
+		  setCurrentAsset(data[0].final_asset);
+		  setRecentSessions(data);
+		} else {
+		  setCurrentAsset(INIT_CASH);
+		}
+		setLoadingAsset(false);
+	  };
+	  fetchAsset();
+	}, []); // ← 빈 배열로 변경, 마운트 시 1회 실행
+
+	const handleStartGame = async (market: "KOSPI" | "QQQ") => {
+	  const { data: { user: currentUser } } = await supabase.auth.getUser();
+	  if (!currentUser) {
+		await supabase.auth.signInWithOAuth({
+		  provider: "google",
+		  options: { redirectTo: `${window.location.origin}/auth/callback?next=/game` },
+		});
+		return;
+	  }
+	  const asset = currentAsset ?? INIT_CASH;
+	  const params = new URLSearchParams({
+		market, interval: intervalMode,
+		initCash: String(asset),
+		...(mission ? { mission } : {}),
+	  });
+	  router.push(`/game?${params.toString()}`);
+	};
+
+  const pnlColor = (pct: number) => pct > 0 ? C.red : pct < 0 ? C.blue : C.muted;
+  const totalPnlPct = currentAsset != null ? ((currentAsset / INIT_CASH) - 1) * 100 : 0;
 
   return (
     <main style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
 
       {/* 타이틀 */}
-      <div style={{ textAlign: "center", marginBottom: 32 }}>
+      <div style={{ textAlign: "center", marginBottom: 24 }}>
         <div style={{ fontSize: 11, letterSpacing: 4, color: C.muted, textTransform: "uppercase", marginBottom: 10 }}>Chart Game</div>
         <h1 style={{ fontSize: 36, fontWeight: 800, margin: 0 }}>차트게임</h1>
         <p style={{ color: C.muted, marginTop: 6, fontSize: 13 }}>실제 과거 데이터 · 1턴 = 1봉 · 추세추종 학습</p>
       </div>
+
+      {/* 자산 현황 (로그인 시) */}
+      {mounted && user && (
+        <div style={{ width: "100%", maxWidth: 480, marginBottom: 20 }}>
+          <div style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, padding: "16px 20px" }}>
+            {loadingAsset ? (
+              <div style={{ textAlign: "center", color: C.muted, fontSize: 13 }}>자산 불러오는 중...</div>
+            ) : (
+              <>
+                {/* 현재 자산 */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 3 }}>💰 현재 자산</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: pnlColor(totalPnlPct) }}>
+                      {fmtKRW(currentAsset ?? INIT_CASH)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 3 }}>초기 대비</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: pnlColor(totalPnlPct) }}>
+                      {fmtPct(totalPnlPct)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 최근 게임 기록 */}
+                {recentSessions.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>최근 게임</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {recentSessions.map((s, i) => (
+                        <div key={i} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "7px 10px", borderRadius: 8,
+                          background: C.bg, border: `1px solid ${C.border}`, fontSize: 12,
+                        }}>
+                          <span style={{ color: C.sub }}>{s.market} · {s.ticker_name}</span>
+                          <span style={{ fontWeight: 700, color: pnlColor(s.return_pct) }}>
+                            {fmtPct(s.return_pct)}
+                          </span>
+                          <span style={{ color: C.muted, fontSize: 11 }}>
+                            {new Date(s.played_at).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 봉 선택 */}
       <div style={{ marginBottom: 20, width: "100%", maxWidth: 480 }}>
@@ -114,7 +214,7 @@ export default function LobbyClient({ user }: Props) {
       </div>
 
       {/* 게임 시작 버튼 */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
         {(["KOSPI", "QQQ"] as const).map(m => (
           <button key={m} onClick={() => handleStartGame(m)} style={{
             padding: "14px 44px", borderRadius: 10,
@@ -131,16 +231,16 @@ export default function LobbyClient({ user }: Props) {
         ))}
       </div>
 
-      {/* 미로그인 안내 — mounted 후에만 (hydration 안전) */}
+      {/* 미로그인 안내 */}
       {mounted && !user && (
-        <div style={{ padding: "10px 16px", background: "#f3f0ff", borderRadius: 8, border: "1px solid #d0bfff", fontSize: 12, color: C.accent, textAlign: "center" }}>
+        <div style={{ padding: "10px 16px", background: "#f3f0ff", borderRadius: 8, border: "1px solid #d0bfff", fontSize: 12, color: C.accent, textAlign: "center", marginBottom: 16 }}>
           🔒 게임 시작 시 Google 로그인이 필요합니다
         </div>
       )}
 
       {/* 게임 정보 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, maxWidth: 480, width: "100%", marginTop: 12 }}>
-        {[["초기자본","1,000만원"],["봉 기준", intervalMode === "1wk" ? "주봉" : "월봉"],["이동평균","5 / 10 / 240MA"]].map(([k, v]) => (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, maxWidth: 480, width: "100%" }}>
+        {[["봉 기준", intervalMode === "1wk" ? "주봉" : "월봉"], ["이동평균","5 / 10 / 240MA"]].map(([k, v]) => (
           <div key={k} style={{ background: C.surface, borderRadius: 10, padding: "12px 14px", border: `1px solid ${C.border}`, textAlign: "center" }}>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 3 }}>{k}</div>
             <div style={{ fontSize: 13, fontWeight: 700 }}>{v}</div>
