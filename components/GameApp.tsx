@@ -444,15 +444,15 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const dedupGood = [...new Set(goodPoints)], dedupBad = [...new Set(badPoints)];
   const iLabel = interval === "1wk" ? "주봉" : "월봉";
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }}>
-      <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", boxShadow: "0 -4px 40px rgba(0,0,0,.2)", width: "min(480px, 100vw)", height: "92dvh", display: "flex", flexDirection: "column", animation: "fadeInScale .2s ease" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 12px 60px rgba(0,0,0,.2)", width: "min(480px, 96vw)", maxHeight: "90vh", overflowY: "auto", animation: "fadeInScale .2s ease" }}>
         <div style={{ background: "#f8f9fa", padding: "24px 24px 20px", borderBottom: "1px solid #e9ecef", borderRadius: "20px 20px 0 0", textAlign: "center" }}>
           <div style={{ fontSize: 12, color: "#adb5bd", marginBottom: 4 }}>{market} · {stockMeta?.name} · {iLabel}</div>
           <div style={{ fontSize: 11, color: "#adb5bd", marginBottom: 12 }}>{fmtDate(startDate)} ~ {fmtDate(endDate)}</div>
           <div style={{ fontSize: 38, fontWeight: 800, color: pnl >= 0 ? "#e03131" : "#1971c2" }}>{fmtPct(pnl)}</div>
           <div style={{ fontSize: 14, color: "#495057", marginTop: 4 }}>{fmtKRW(totalAsset)}</div>
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 0" }}>
+        <div style={{ padding: "20px 20px 0" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
             {[["수익금", ((totalAsset - initCash) >= 0 ? "+" : "") + fmtKRW(totalAsset - initCash)], ["총 거래", trades.length + "회"], ["추세추종 점수", followScore + "점 / 100점"], ["평균 판단 점수", avgTurnScore + "점"]].map(([k, v]) => (
               <div key={k} style={{ background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", border: "1px solid #e9ecef" }}>
@@ -498,7 +498,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
             </div>
           </div>
         </div>
-        <div style={{ padding: "12px 20px 28px", display: "flex", gap: 10, flexShrink: 0, borderTop: "1px solid #e9ecef" }}>
+        <div style={{ padding: "0 20px 20px", display: "flex", gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: "13px", borderRadius: 10, border: "1.5px solid #dee2e6", background: "#fff", color: "#212529", fontSize: 14, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>🏠 로비</button>
           <button onClick={onRestart} style={{ flex: 2, padding: "13px", borderRadius: 10, border: "none", background: "#212529", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>🔄 새 게임</button>
         </div>
@@ -536,7 +536,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const [tradeModal,   setTradeModal]  = useState<{ type: string; qty: number; amount: string } | null>(null);
   const [scoreModal,   setScoreModal]  = useState<TurnScore | null>(null);
   const [showResult,   setShowResult]  = useState(false);
-  const [diagOpen,     setDiagOpen]    = useState(true);
+  const [diagOpen,     setDiagOpen]    = useState(false);
   const [lastGameAsset, setLastGameAsset] = useState<number>(INIT_CASH);
   const modalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -702,6 +702,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 		const totalMaxScore = latestScores.reduce((s, t) => s + t.maxScore, 0);
 		const totalGained   = latestScores.reduce((s, t) => s + t.score, 0);
 		const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
+		setLastGameAsset(totalAsset);
 		onGameEnd({
 		  trades,
 		  turnScores: latestScores,
@@ -712,7 +713,6 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 		  mission,
 		  followScore,
 		});
-		setLastGameAsset(totalAsset);
 		return;
 	  }
 	  setCurIdx(i => i + 1);
@@ -799,13 +799,11 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} height={175} />
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} height={185} />
           <div style={{ borderTop: `1px solid ${C.border}` }}><VolumeChart candles={chartCandles} height={32} /></div>
         </div>
       </div>
 
-      {/* 스크롤 영역 */}
-      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       {/* 캔들 상태 + MA 상태 */}
       {candleState && (
         <div style={{ padding: "4px 10px 0", display: "flex", gap: 5 }}>
@@ -834,50 +832,52 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         </div>
       )}
 
-      {/* 추세 진단 */}
-      {diagnosis && (
-        <div style={{ padding: "4px 10px 0" }}>
-          <div style={{ background: "#fafafa", borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
-            <button onClick={() => setDiagOpen(v => !v)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>📊 추세 진단</span>
-              <span style={{ fontSize: 11, color: C.muted }}>{diagOpen ? "▲ 접기" : "▼ 펼치기"}</span>
-            </button>
-            {diagOpen && (
-              <div style={{ padding: "0 12px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: diagnosis.stageColor + "12", border: `1px solid ${diagnosis.stageColor}33` }}>
-                    <div style={{ fontSize: 9, color: C.muted, marginBottom: 2 }}>추세 단계</div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: diagnosis.stageColor }}>{diagnosis.stageIcon} {diagnosis.stage}</div>
-                  </div>
-                  <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: diagnosis.buyFitColor + "12", border: `1px solid ${diagnosis.buyFitColor}33` }}>
-                    <div style={{ fontSize: 9, color: C.muted, marginBottom: 2 }}>매수 적합도</div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: diagnosis.buyFitColor }}>{diagnosis.buyFit}</div>
-                  </div>
-                </div>
-                <div style={{ fontSize: 11, color: C.sub, padding: "7px 10px", background: C.bg, borderRadius: 8, border: `1px solid ${C.border}`, lineHeight: 1.6 }}>
-                  <div>💬 {diagnosis.buyReason}</div>
-                  <div style={{ color: C.accent, marginTop: 2 }}>→ {diagnosis.suggestion}</div>
-                  {diagnosis.risk && <div style={{ color: "#c2410c", marginTop: 2 }}>{diagnosis.risk}</div>}
-                </div>
-                {!ma240Cur && (
-                  <div style={{ padding: "7px 10px", background: "#f8f9fa", borderRadius: 8, border: "1px solid #e9ecef", fontSize: 11, color: "#868e96" }}>
-                    ℹ️ 월봉은 240봉 데이터가 부족하여 240MA 없이 진행됩니다.
-                  </div>
-                )}
-                {mission && missionHit && (
-                  <div style={{ padding: "8px 12px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 12, fontWeight: 700, color: C.green }}>
-                    🎯 미션 조건 달성! 지금이 {MISSIONS.find(m => m.id === mission)?.title} 타이밍입니다
-                  </div>
-                )}
+      {/* 추세 진단 하단 시트 오버레이 */}
+      {diagnosis && diagOpen && (
+        <div
+          onClick={() => setDiagOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: C.bg, borderRadius: "16px 16px 0 0", padding: "0 16px 32px", maxHeight: "60dvh", overflowY: "auto" }}
+          >
+            {/* 핸들 */}
+            <div style={{ textAlign: "center", paddingTop: 10, paddingBottom: 6 }}>
+              <div style={{ display: "inline-block", width: 36, height: 4, background: C.border2, borderRadius: 2 }} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>📊 추세 진단</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1, padding: "10px 12px", borderRadius: 10, background: diagnosis.stageColor + "12", border: `1px solid ${diagnosis.stageColor}33` }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>추세 단계</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: diagnosis.stageColor }}>{diagnosis.stageIcon} {diagnosis.stage}</div>
+              </div>
+              <div style={{ flex: 1, padding: "10px 12px", borderRadius: 10, background: diagnosis.buyFitColor + "12", border: `1px solid ${diagnosis.buyFitColor}33` }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>매수 적합도</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: diagnosis.buyFitColor }}>{diagnosis.buyFit}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: C.sub, padding: "10px 12px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`, lineHeight: 1.7, marginBottom: 8 }}>
+              <div>💬 {diagnosis.buyReason}</div>
+              <div style={{ color: C.accent, marginTop: 3 }}>→ {diagnosis.suggestion}</div>
+              {diagnosis.risk && <div style={{ color: "#c2410c", marginTop: 3 }}>{diagnosis.risk}</div>}
+            </div>
+            {!ma240Cur && (
+              <div style={{ padding: "8px 12px", background: "#f8f9fa", borderRadius: 10, border: "1px solid #e9ecef", fontSize: 11, color: "#868e96", marginBottom: 8 }}>
+                ℹ️ 월봉은 240봉 데이터가 부족하여 240MA 없이 진행됩니다.
+              </div>
+            )}
+            {mission && missionHit && (
+              <div style={{ padding: "10px 12px", background: "#f0fdf4", borderRadius: 10, border: "1px solid #bbf7d0", fontSize: 12, fontWeight: 700, color: C.green }}>
+                🎯 미션 조건 달성! 지금이 {MISSIONS.find(m => m.id === mission)?.title} 타이밍입니다
               </div>
             )}
           </div>
         </div>
       )}
 
-      </div>{/* 스크롤 영역 끝 */}
       {/* 매매 패널 */}
-      <div style={{ padding: "4px 10px 8px", flexShrink: 0 }}>
+      <div style={{ padding: "4px 10px 10px", flexShrink: 0 }}>
         <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: "12px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, padding: "7px 10px", background: C.bg, borderRadius: 8, border: `1px solid ${C.border}` }}>
             <div>
@@ -897,6 +897,20 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               </div>
             </div>
           </div>
+
+          {/* 추세 진단 버튼 */}
+          {diagnosis && (
+            <button onClick={() => setDiagOpen(true)} style={{
+              width: "100%", marginBottom: 8, padding: "7px 12px",
+              borderRadius: 8, border: `1px solid #d0bfff`,
+              background: "#f3f0ff", color: C.accent,
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
+              fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}>
+              <span>📊 추세 진단</span>
+              <span style={{ fontSize: 11, color: diagnosis.buyFitColor, fontWeight: 800 }}>{diagnosis.buyFit} ↑</span>
+            </button>
+          )}
 
           <div style={{ marginBottom: 9 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
