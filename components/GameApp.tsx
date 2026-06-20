@@ -323,7 +323,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
     return pts.length ? <polyline points={pts.join(" ")} fill="none" stroke={col} strokeWidth="1.5" strokeOpacity="0.9" /> : null;
   };
   return (
-	<svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
+    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block", ...style }}>
       {lbls.map((l, i) => (
         <g key={i}>
           <line x1={PAD.l} y1={l.y} x2={PAD.l + W} y2={l.y} stroke="#e9ecef" strokeWidth="1" />
@@ -540,7 +540,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const [lastGameAsset, setLastGameAsset] = useState<number>(INIT_CASH);
   const modalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const WINDOW = intervalMode === "1wk" ? 52 : 24;
+  const WINDOW = 36;
 
   const startGame = async (mkt: "KOSPI" | "QQQ", itv = intervalMode, ms = mission, nextCash?: number) => {
     const isQ = mkt === "QQQ";
@@ -800,7 +800,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             </div>
           </div>
           <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1 }} />
-          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={32} /></div>
+          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={24} /></div>
         </div>
       </div>
 
@@ -842,9 +842,21 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             onClick={e => e.stopPropagation()}
             style={{ background: C.bg, borderRadius: "16px 16px 0 0", padding: "0 16px 32px", maxHeight: "60dvh", overflowY: "auto" }}
           >
-            {/* 핸들 */}
-            <div style={{ textAlign: "center", paddingTop: 10, paddingBottom: 6 }}>
-              <div style={{ display: "inline-block", width: 36, height: 4, background: C.border2, borderRadius: 2 }} />
+            {/* 핸들 + 헤더 */}
+            <div style={{ display: "flex", alignItems: "center", paddingTop: 10, paddingBottom: 10 }}>
+              <div style={{ flex: 1 }} />
+              <div style={{ width: 36, height: 4, background: C.border2, borderRadius: 2 }} />
+              <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setDiagOpen(false)}
+                  style={{
+                    background: C.surface, border: `1px solid ${C.border2}`,
+                    borderRadius: 20, width: 28, height: 28,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", fontSize: 14, color: C.muted, fontFamily: "inherit",
+                  }}
+                >✕</button>
+              </div>
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>📊 추세 진단</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
