@@ -444,15 +444,15 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const dedupGood = [...new Set(goodPoints)], dedupBad = [...new Set(badPoints)];
   const iLabel = interval === "1wk" ? "주봉" : "월봉";
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }}>
-      <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 12px 60px rgba(0,0,0,.2)", width: "min(480px, 96vw)", maxHeight: "90vh", overflowY: "auto", animation: "fadeInScale .2s ease" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }}>
+      <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", boxShadow: "0 -4px 40px rgba(0,0,0,.2)", width: "min(480px, 100vw)", height: "92dvh", display: "flex", flexDirection: "column", animation: "fadeInScale .2s ease" }}>
         <div style={{ background: "#f8f9fa", padding: "24px 24px 20px", borderBottom: "1px solid #e9ecef", borderRadius: "20px 20px 0 0", textAlign: "center" }}>
           <div style={{ fontSize: 12, color: "#adb5bd", marginBottom: 4 }}>{market} · {stockMeta?.name} · {iLabel}</div>
           <div style={{ fontSize: 11, color: "#adb5bd", marginBottom: 12 }}>{fmtDate(startDate)} ~ {fmtDate(endDate)}</div>
           <div style={{ fontSize: 38, fontWeight: 800, color: pnl >= 0 ? "#e03131" : "#1971c2" }}>{fmtPct(pnl)}</div>
           <div style={{ fontSize: 14, color: "#495057", marginTop: 4 }}>{fmtKRW(totalAsset)}</div>
         </div>
-        <div style={{ padding: "20px 20px 0" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 0" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
             {[["수익금", ((totalAsset - initCash) >= 0 ? "+" : "") + fmtKRW(totalAsset - initCash)], ["총 거래", trades.length + "회"], ["추세추종 점수", followScore + "점 / 100점"], ["평균 판단 점수", avgTurnScore + "점"]].map(([k, v]) => (
               <div key={k} style={{ background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", border: "1px solid #e9ecef" }}>
@@ -498,7 +498,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
             </div>
           </div>
         </div>
-        <div style={{ padding: "0 20px 20px", display: "flex", gap: 10 }}>
+        <div style={{ padding: "12px 20px 28px", display: "flex", gap: 10, flexShrink: 0, borderTop: "1px solid #e9ecef" }}>
           <button onClick={onClose} style={{ flex: 1, padding: "13px", borderRadius: 10, border: "1.5px solid #dee2e6", background: "#fff", color: "#212529", fontSize: 14, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>🏠 로비</button>
           <button onClick={onRestart} style={{ flex: 2, padding: "13px", borderRadius: 10, border: "none", background: "#212529", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>🔄 새 게임</button>
         </div>
