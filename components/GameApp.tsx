@@ -39,6 +39,7 @@ interface GameAppProps {
   initialMarket: "KOSPI" | "QQQ";
   initialInterval: "1wk" | "1mo";
   initialMission: string | null;
+  initialCash?: number;          // ← 이 줄 추가
   onGameEnd: (result: GameResult) => Promise<string | null>;
   onBackToLobby: () => void;
 }
@@ -509,8 +510,8 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
 // ══════════════════════════════════════════════════════════════════════════════
 // 메인 GameApp
 // ══════════════════════════════════════════════════════════════════════════════
-export default function GameApp({ initialMarket, initialInterval, initialMission, onGameEnd, onBackToLobby }: GameAppProps) {
-  const INIT_CASH = 10_000_000, MAX_TURNS = 50, EXCHANGE = 1350;
+export default function GameApp({ initialMarket, initialInterval, initialMission, initialCash = 10_000_000, onGameEnd, onBackToLobby }: GameAppProps) {
+  const INIT_CASH = initialCash, MAX_TURNS = 50, EXCHANGE = 1350;
 
   const [screen,       setScreen]      = useState<string>("loading");
   const [market,       setMarket]      = useState(initialMarket);
