@@ -758,7 +758,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 
   // ════ 게임 ════
   return (
-    <div style={{ height: "100dvh", background: C.bg, color: C.text, fontFamily: "'Pretendard','Noto Sans KR',sans-serif", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ height: "100dvh", maxHeight: "100dvh", background: C.bg, color: C.text, fontFamily: "'Pretendard','Noto Sans KR',sans-serif", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <style>{`@keyframes fadeInScale{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <TradeModal msg={tradeModal} />
@@ -792,22 +792,22 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       </div>
 
       {/* 자산 요약 */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "4px 10px", display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <div>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "3px 10px", display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", flexShrink: 0 }}>
+        <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: 9, color: C.muted }}>총 자산</div>
-          {isQQQ ? <><div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{fmtUSD(totalAsset / EXCHANGE)}</div><div style={{ fontSize: 9, color: C.muted }}>({fmtKRW(totalAsset)})</div></> : <div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{fmtKRW(totalAsset)}</div>}
+          <div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{isQQQ ? fmtUSD(totalAsset / EXCHANGE) : fmtKRW(totalAsset)}</div>
         </div>
-        <div><div style={{ fontSize: 9, color: C.muted }}>수익률</div><div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{fmtPct(pnlPct)}</div></div>
-        <div>
+        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 9, color: C.muted }}>수익률</div><div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{fmtPct(pnlPct)}</div></div>
+        <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: 9, color: C.muted }}>현금</div>
-          {isQQQ ? <><div style={{ fontSize: 12, fontWeight: 700 }}>{fmtUSD(cash / EXCHANGE)}</div><div style={{ fontSize: 9, color: C.muted }}>({fmtKRW(cash)})</div></> : <div style={{ fontSize: 12, fontWeight: 700 }}>{fmtKRW(cash)}</div>}
+          <div style={{ fontSize: 12, fontWeight: 700 }}>{isQQQ ? fmtUSD(cash / EXCHANGE) : fmtKRW(cash)}</div>
         </div>
-        <div><div style={{ fontSize: 9, color: C.muted }}>보유</div><div style={{ fontSize: 12, fontWeight: 700 }}>{holdings}주</div></div>
-        <div>
+        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 9, color: C.muted }}>보유</div><div style={{ fontSize: 12, fontWeight: 700 }}>{holdings}주</div></div>
+        <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: 9, color: C.muted }}>평단</div>
-          {avgCostKRW > 0 ? (isQQQ ? <><div style={{ fontSize: 12, fontWeight: 700 }}>{fmtUSD(avgCostKRW / EXCHANGE)}</div><div style={{ fontSize: 9, color: C.muted }}>({fmtKRW(avgCostKRW)})</div></> : <div style={{ fontSize: 12, fontWeight: 700 }}>{fmtKRW(avgCostKRW)}</div>) : <div style={{ fontSize: 12, fontWeight: 700 }}>—</div>}
+          <div style={{ fontSize: 12, fontWeight: 700 }}>{avgCostKRW > 0 ? (isQQQ ? fmtUSD(avgCostKRW / EXCHANGE) : fmtKRW(avgCostKRW)) : "—"}</div>
         </div>
-        <div><div style={{ fontSize: 9, color: C.muted }}>평가손익</div><div style={{ fontSize: 12, fontWeight: 700, color: holdPnlPct >= 0 ? C.red : C.blue }}>{avgCostKRW > 0 ? fmtPct(holdPnlPct) : "—"}</div></div>
+        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 9, color: C.muted }}>평가손익</div><div style={{ fontSize: 12, fontWeight: 700, color: holdPnlPct >= 0 ? C.red : C.blue }}>{avgCostKRW > 0 ? fmtPct(holdPnlPct) : "—"}</div></div>
       </div>
 
       {/* 차트 */}
@@ -824,7 +824,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} svgHeight="calc(100dvh - 460px)" />
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} svgHeight="min(calc(100dvh - 440px), 480px)" />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={28} interval={intervalMode} /></div>
         </div>
       </div>
