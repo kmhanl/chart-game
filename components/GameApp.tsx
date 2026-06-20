@@ -341,17 +341,42 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   );
 }
 
-function VolumeChart({ candles, width = 700, height = 48 }: { candles: Candle[]; width?: number; height?: number }) {
+function VolumeChart({ candles, width = 700, height = 48, interval = "1wk" }: { candles: Candle[]; width?: number; height?: number; interval?: string }) {
   if (!candles.length) return null;
-  const PAD = { l: 10, r: 66, t: 4, b: 8 };
+  const LABEL_H = 14;
+  const PAD = { l: 10, r: 66, t: 2, b: LABEL_H };
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b;
   const n = candles.length, maxV = Math.max(...candles.map(c => c.vol), 1), cw = Math.max(2, (W / n) * 0.7);
+  const sx = (i: number) => PAD.l + (i / Math.max(n - 1, 1)) * W;
+
+  // 연도 레이블: 주봉은 1월 첫 주, 월봉은 1월
+  const yearLabels: { x: number; year: number }[] = [];
+  let lastYear = -1;
+  candles.forEach((c, i) => {
+    const d = c.date;
+    const yr = d.getFullYear();
+    const mo = d.getMonth(); // 0=1월
+    const isYearStart = interval === "1mo" ? mo === 0 : (mo === 0 && d.getDate() <= 14);
+    if (isYearStart && yr !== lastYear) {
+      yearLabels.push({ x: sx(i), year: yr });
+      lastYear = yr;
+    }
+  });
+
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
+      {/* 거래량 바 */}
       {candles.map((c, i) => {
-        const x = PAD.l + (i / Math.max(n - 1, 1)) * W, bH = (c.vol / maxV) * H;
+        const x = sx(i), bH = (c.vol / maxV) * H;
         return <rect key={i} x={x - cw / 2} y={PAD.t + H - bH} width={cw} height={bH} fill={c.close >= c.open ? "#e0313155" : "#1971c255"} />;
       })}
+      {/* 연도 레이블 */}
+      {yearLabels.map(({ x, year }) => (
+        <g key={year}>
+          <line x1={x} y1={PAD.t} x2={x} y2={PAD.t + H} stroke="#dee2e6" strokeWidth="0.5" strokeDasharray="2 2" />
+          <text x={x + 2} y={height - 2} fontSize="8" fill="#adb5bd">{year}</text>
+        </g>
+      ))}
     </svg>
   );
 }
@@ -800,7 +825,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             </div>
           </div>
           <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1 }} />
-          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={24} /></div>
+          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={28} interval={intervalMode} /></div>
         </div>
       </div>
 
