@@ -792,22 +792,22 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       </div>
 
       {/* 자산 요약 */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "3px 10px", display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", flexShrink: 0 }}>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "3px 8px", display: "flex", gap: 6, flexWrap: "nowrap", overflowX: "hidden", flexShrink: 0 }}>
         <div style={{ flexShrink: 0 }}>
-          <div style={{ fontSize: 9, color: C.muted }}>총 자산</div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{isQQQ ? fmtUSD(totalAsset / EXCHANGE) : fmtKRW(totalAsset)}</div>
+          <div style={{ fontSize: 8, color: C.muted }}>총 자산</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: pnlColor }}>{isQQQ ? fmtUSD(totalAsset / EXCHANGE) : fmtKRW(totalAsset)}</div>
         </div>
-        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 9, color: C.muted }}>수익률</div><div style={{ fontSize: 12, fontWeight: 700, color: pnlColor }}>{fmtPct(pnlPct)}</div></div>
+        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 8, color: C.muted }}>수익률</div><div style={{ fontSize: 11, fontWeight: 700, color: pnlColor }}>{fmtPct(pnlPct)}</div></div>
         <div style={{ flexShrink: 0 }}>
-          <div style={{ fontSize: 9, color: C.muted }}>현금</div>
-          <div style={{ fontSize: 12, fontWeight: 700 }}>{isQQQ ? fmtUSD(cash / EXCHANGE) : fmtKRW(cash)}</div>
+          <div style={{ fontSize: 8, color: C.muted }}>현금</div>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>{isQQQ ? fmtUSD(cash / EXCHANGE) : fmtKRW(cash)}</div>
         </div>
-        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 9, color: C.muted }}>보유</div><div style={{ fontSize: 12, fontWeight: 700 }}>{holdings}주</div></div>
+        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 8, color: C.muted }}>보유</div><div style={{ fontSize: 11, fontWeight: 700 }}>{holdings}주</div></div>
         <div style={{ flexShrink: 0 }}>
-          <div style={{ fontSize: 9, color: C.muted }}>평단</div>
-          <div style={{ fontSize: 12, fontWeight: 700 }}>{avgCostKRW > 0 ? (isQQQ ? fmtUSD(avgCostKRW / EXCHANGE) : fmtKRW(avgCostKRW)) : "—"}</div>
+          <div style={{ fontSize: 8, color: C.muted }}>평단</div>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>{avgCostKRW > 0 ? (isQQQ ? fmtUSD(avgCostKRW / EXCHANGE) : fmtKRW(avgCostKRW)) : "—"}</div>
         </div>
-        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 9, color: C.muted }}>평가손익</div><div style={{ fontSize: 12, fontWeight: 700, color: holdPnlPct >= 0 ? C.red : C.blue }}>{avgCostKRW > 0 ? fmtPct(holdPnlPct) : "—"}</div></div>
+        <div style={{ flexShrink: 0 }}><div style={{ fontSize: 8, color: C.muted }}>평가손익</div><div style={{ fontSize: 11, fontWeight: 700, color: holdPnlPct >= 0 ? C.red : C.blue }}>{avgCostKRW > 0 ? fmtPct(holdPnlPct) : "—"}</div></div>
       </div>
 
       {/* 차트 */}
@@ -829,33 +829,22 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         </div>
       </div>
 
-      {/* 캔들 상태 + MA 상태 */}
-      {candleState && (
-        <div style={{ padding: "4px 10px 0", display: "flex", gap: 5, flexShrink: 0 }}>
-          <div style={{ flex: "0 0 auto", minWidth: 118, background: candleState.bg, borderRadius: 9, border: `1px solid ${candleState.color}33`, padding: "8px 10px", display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ fontSize: 16 }}>{candleState.icon}</span>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: candleState.color }}>{candleState.label}</div>
-              <div style={{ fontSize: 10, color: C.sub }}>{candleState.desc}</div>
+      {/* MA 상태 (고정 높이) */}
+      <div style={{ padding: "4px 10px 0", display: "flex", gap: 5, flexShrink: 0 }}>
+        {([{ label:"5MA", st: maStatus5, col:"#7048e8", gap: gap5 }, { label:"10MA", st: maStatus10, col:"#f97316", gap: gap10 }, { label:"240MA", st: maStatus240, col:"#adb5bd", gap: gap240 }]).map(({ label, st, col, gap }) => {
+          const isOver10 = label === "10MA" && overheat10;
+          const fmtGap = (g: number | null) => g === null ? "—" : (g >= 0 ? "+" : "") + g.toFixed(1) + "%";
+          const gapColor = gap === null ? C.muted : gap > 0 ? "#e03131" : "#1971c2";
+          return (
+            <div key={label} style={{ flex: 1, height: 52, borderRadius: 9, border: `1px solid ${isOver10 ? "#fb923c44" : (st ? st.color + "44" : C.border)}`, background: isOver10 ? "#fff7ed" : (st ? st.bg : C.surface), padding: "6px 8px", overflow: "hidden" }}>
+              <div style={{ fontSize: 9, color: col, fontWeight: 700, marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: (st as {bold?:boolean})?.bold ? 12 : 11, fontWeight: (st as {bold?:boolean})?.bold ? 800 : 600, color: st?.color ?? C.muted }}>{st?.status ?? "—"}</div>
+              <div style={{ fontSize: 10, color: gapColor, marginTop: 1, fontWeight: 600 }}>이격 {fmtGap(gap)}</div>
+              {isOver10 && <div style={{ fontSize: 8, color: "#c2410c", marginTop: 1, fontWeight: 700 }}>⚠️ 과열주의</div>}
             </div>
-          </div>
-          <div style={{ flex: 1, display: "flex", gap: 5 }}>
-            {([{ label:"5MA", st: maStatus5, col:"#7048e8", gap: gap5 }, { label:"10MA", st: maStatus10, col:"#f97316", gap: gap10 }, { label:"240MA", st: maStatus240, col:"#adb5bd", gap: gap240 }]).map(({ label, st, col, gap }) => {
-              const isOver10 = label === "10MA" && overheat10;
-              const fmtGap = (g: number | null) => g === null ? "—" : (g >= 0 ? "+" : "") + g.toFixed(1) + "%";
-              const gapColor = gap === null ? C.muted : gap > 0 ? "#e03131" : "#1971c2";
-              return (
-                <div key={label} style={{ flex: 1, borderRadius: 9, border: `1px solid ${isOver10 ? "#fb923c44" : (st ? st.color + "44" : C.border)}`, background: isOver10 ? "#fff7ed" : (st ? st.bg : C.surface), padding: "7px 8px" }}>
-                  <div style={{ fontSize: 9, color: col, fontWeight: 700, marginBottom: 2 }}>{label}</div>
-                  <div style={{ fontSize: (st as {bold?:boolean})?.bold ? 12 : 11, fontWeight: (st as {bold?:boolean})?.bold ? 800 : 600, color: st?.color ?? C.muted }}>{st?.status ?? "—"}</div>
-                  <div style={{ fontSize: 10, color: gapColor, marginTop: 2, fontWeight: 600 }}>이격 {fmtGap(gap)}</div>
-                  {isOver10 && <div style={{ fontSize: 9, color: "#c2410c", marginTop: 2, fontWeight: 700, lineHeight: 1.3 }}>⚠️ 과열 매수 주의</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+          );
+        })}
+      </div>
 
       {/* 추세 진단 하단 시트 오버레이 */}
       {diagnosis && diagOpen && (
@@ -916,16 +905,19 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       {/* 매매 패널 */}
       <div style={{ padding: "4px 10px 10px", flexShrink: 0 }}>
         <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: "12px 14px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, padding: "7px 10px", background: C.bg, borderRadius: 8, border: `1px solid ${C.border}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, padding: "6px 10px", background: C.bg, borderRadius: 8, border: `1px solid ${C.border}` }}>
             <div>
-              <div style={{ fontSize: 9, color: C.muted }}>현재 주가</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: isUp ? C.red : C.blue }}>
-                {isQQQ ? fmtUSD(currentPrice) : fmtKRW(currentPrice)}
-                {isQQQ && <span style={{ fontSize: 9, color: C.muted, marginLeft: 5 }}>≈ {fmtKRW(krwPrice)}</span>}
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                {candleState && <span style={{ fontSize: 13 }}>{candleState.icon}</span>}
+                <div style={{ fontSize: 13, fontWeight: 800, color: isUp ? C.red : C.blue }}>
+                  {isQQQ ? fmtUSD(currentPrice) : fmtKRW(currentPrice)}
+                  {isQQQ && <span style={{ fontSize: 9, color: C.muted, marginLeft: 4 }}>≈ {fmtKRW(krwPrice)}</span>}
+                </div>
               </div>
+              {candleState && <div style={{ fontSize: 9, color: C.sub, marginTop: 1 }}>{candleState.label} · {candleState.desc}</div>}
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 9, color: C.muted }}>현금최대 / {buyPct}%</div>
+              <div style={{ fontSize: 8, color: C.muted }}>현금최대 / {buyPct}%</div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>
                 <span style={{ color: C.accent }}>{buyableQty.toLocaleString()}</span>
                 <span style={{ color: C.muted, fontSize: 10 }}>주 / </span>
