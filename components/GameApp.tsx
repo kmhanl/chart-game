@@ -1256,14 +1256,18 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                     {threeBarPattern.icon} {threeBarPattern.label} 패턴{threeBarPattern.strong ? " ⭐" : ""}
                   </div>
                   {/* 3봉 시각화 */}
-                  <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 24 }}>
-                    {threeBarPattern.type === "양음양"
+                  {(() => {
+                    const bars = threeBarPattern.type === "양음양"
                       ? [{ h: 16, up: true }, { h: 10, up: false }, { h: 20, up: true }]
-                      : [{ h: 16, up: false }, { h: 10, up: true }, { h: 20, up: false }]
-                    }.map((b, i) => (
-                      <div key={i} style={{ width: 7, height: b.h, borderRadius: 2, background: b.up ? "#e03131" : "#1971c2" }} />
-                    ))}
-                  </div>
+                      : [{ h: 16, up: false }, { h: 10, up: true }, { h: 20, up: false }];
+                    return (
+                      <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 24 }}>
+                        {bars.map((b, i) => (
+                          <div key={i} style={{ width: 7, height: b.h, borderRadius: 2, background: b.up ? "#e03131" : "#1971c2" }} />
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div style={{ fontSize: 10, color: threeBarPattern.color, marginBottom: 3 }}>{threeBarPattern.desc}</div>
                 <div style={{ fontSize: 10, color: "#495057", background: "rgba(255,255,255,0.6)", borderRadius: 6, padding: "4px 8px" }}>
