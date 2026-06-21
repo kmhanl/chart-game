@@ -275,7 +275,13 @@ function scoreTurnAction(action: string, snap: Record<string, unknown>, diagnosi
     if (snap.deadCross) { score += 20; reasons.push({ ok: true, text: "데드크로스 매도 (+20)" }); }
     if (!snap.above10)          { score += 15; reasons.push({ ok: true,  text: "10MA 이탈 후 매도 (+15)" }); }
     else if (snap.above5 === false) { score += 10; reasons.push({ ok: true, text: "5MA 이탈 — 절반 매도 전략 (+10)" }); }
-    else if (snap.above5 === true)  { score +=  0; reasons.push({ ok: null, text: "5MA 위 매도 — 추세 중 조기 청산 (중립)" }); }
+    else if (snap.above5 === true) {
+      if (snap.upperTailSignal) {
+        score += 5; reasons.push({ ok: true, text: "윗꼬리 매도 — 매도 압력 확인 후 청산 (+5)" });
+      } else {
+        score += 0; reasons.push({ ok: null, text: "5MA 위 매도 — 추세 중 조기 청산 (중립)" });
+      }
+    }
     // 6번: 대량 매도 출현 후 매도
     if (snap.volMassiveSell) {
       score += 10; maxScore += 10;
@@ -509,7 +515,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
     const snap = t.snap as Record<string, unknown>;
     if (!snap?.above10)              goodPoints.push("10MA 이탈 후 즉시 매도");
     else if (snap?.above5 === false) goodPoints.push("5MA 이탈 절반 매도 — 추세추종 전략");
-    else if (snap?.above5 === true)  addBad("5MA·10MA 위에서 매도 — 추세 중 조기 청산", t.turn + 1);
+    else if (snap?.above5 === true && !snap?.upperTailSignal)  addBad("5MA·10MA 위에서 매도 — 추세 중 조기 청산", t.turn + 1);
     if (snap?.deadCross)             goodPoints.push("데드크로스 매도 타이밍");
     if (snap?.volMassiveSell)        goodPoints.push("대량 매도 출현 후 매도");
   });
