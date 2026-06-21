@@ -427,7 +427,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   );
 }
 
-function VolumeChart({ candles, width = 700, height = 48, interval = "1wk" }: { candles: Candle[]; width?: number; height?: number; interval?: string }) {
+function VolumeChart({ candles, width = 700, height = 48, interval = "1wk", vol20Avg = 0, highlightLast = false }: { candles: Candle[]; width?: number; height?: number; interval?: string; vol20Avg?: number; highlightLast?: boolean; }) {
   if (!candles.length) return null;
   const LABEL_H = 14;
   const PAD = { l: 10, r: 66, t: 2, b: LABEL_H };
@@ -435,13 +435,18 @@ function VolumeChart({ candles, width = 700, height = 48, interval = "1wk" }: { 
   const n = candles.length, maxV = Math.max(...candles.map(c => c.vol), 1), cw = Math.max(2, (W / n) * 0.7);
   const sx = (i: number) => PAD.l + (i / Math.max(n - 1, 1)) * W;
 
+  // 20봉 평균 기준선 y좌표
+  const avgLineY = vol20Avg > 0 ? PAD.t + H - (vol20Avg / maxV) * H : null;
+  // 150% 기준선 y좌표
+  const surgeLineY = vol20Avg > 0 ? PAD.t + H - (vol20Avg * 1.5 / maxV) * H : null;
+
   // 연도 레이블: 주봉은 1월 첫 주, 월봉은 1월
   const yearLabels: { x: number; year: number }[] = [];
   let lastYear = -1;
   candles.forEach((c, i) => {
     const d = c.date;
     const yr = d.getFullYear();
-    const mo = d.getMonth(); // 0=1월
+    const mo = d.getMonth();
     const isYearStart = interval === "1mo" ? mo === 0 : (mo === 0 && d.getDate() <= 14);
     if (isYearStart && yr !== lastYear) {
       yearLabels.push({ x: sx(i), year: yr });
@@ -449,13 +454,55 @@ function VolumeChart({ candles, width = 700, height = 48, interval = "1wk" }: { 
     }
   });
 
+  const lastIdx = n - 1;
+  const lastVol = candles[lastIdx]?.vol ?? 0;
+  const lastRatio = vol20Avg > 0 ? lastVol / vol20Avg : 0;
+  const lastSurge = lastRatio >= 1.5;
+
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
       {/* 거래량 바 */}
       {candles.map((c, i) => {
         const x = sx(i), bH = (c.vol / maxV) * H;
-        return <rect key={i} x={x - cw / 2} y={PAD.t + H - bH} width={cw} height={bH} fill={c.close >= c.open ? "#e0313155" : "#1971c255"} />;
+        const isLast = highlightLast && i === lastIdx;
+        let fill: string;
+        if (isLast) {
+          fill = lastSurge ? "#2f9e44cc" : "#e03131cc"; // 초록=충족, 빨강=미달
+        } else {
+          fill = c.close >= c.open ? "#e0313155" : "#1971c255";
+        }
+        return (
+          <rect key={i} x={x - cw / 2} y={PAD.t + H - bH} width={cw} height={bH}
+            fill={fill}
+            stroke={isLast ? (lastSurge ? "#2f9e44" : "#e03131") : "none"}
+            strokeWidth={isLast ? 1 : 0}
+          />
+        );
       })}
+      {/* 20봉 평균 기준선 (점선, 회색) */}
+      {avgLineY !== null && avgLineY > PAD.t && avgLineY < PAD.t + H && (
+        <line x1={PAD.l} y1={avgLineY} x2={PAD.l + W} y2={avgLineY}
+          stroke="#adb5bd" strokeWidth="0.8" strokeDasharray="3 3" />
+      )}
+      {/* 150% 돌파 기준선 (점선, 보라) */}
+      {surgeLineY !== null && surgeLineY > PAD.t && surgeLineY < PAD.t + H && (
+        <>
+          <line x1={PAD.l} y1={surgeLineY} x2={PAD.l + W} y2={surgeLineY}
+            stroke="#7048e8" strokeWidth="0.8" strokeDasharray="3 3" />
+          <text x={PAD.l + W + 3} y={surgeLineY + 3} fontSize="7" fill="#7048e8">150%</text>
+        </>
+      )}
+      {/* 현재 봉 거래량 비율 텍스트 */}
+      {highlightLast && vol20Avg > 0 && (() => {
+        const x = sx(lastIdx);
+        const bH = (lastVol / maxV) * H;
+        const labelY = PAD.t + H - bH - 2;
+        return labelY > PAD.t + 6 ? (
+          <text x={x} y={labelY} fontSize="7" fill={lastSurge ? "#2f9e44" : "#e03131"} textAnchor="middle" fontWeight="bold">
+            {Math.round(lastRatio * 100)}%
+          </text>
+        ) : null;
+      })()}
       {/* 연도 레이블 */}
       {yearLabels.map(({ x, year }) => (
         <g key={year}>
@@ -648,11 +695,14 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const getMiniChartData = (turn: number) => {
     const idx = gameStart + turn;
     const start = Math.max(0, idx - 35);
-    const candles = allCandles.slice(start, idx);  // idx 미포함 = turn 기준 봉
+    const candles = allCandles.slice(start, idx);
     const ma5: (number|null)[]  = candles.map((_, i) => i < 4  ? null : candles.slice(i-4,  i+1).reduce((s,c)=>s+c.close,0)/5);
     const ma10: (number|null)[] = candles.map((_, i) => i < 9  ? null : candles.slice(i-9,  i+1).reduce((s,c)=>s+c.close,0)/10);
     const ma240: (number|null)[]= candles.map((_, i) => i < 239? null : candles.slice(i-239,i+1).reduce((s,c)=>s+c.close,0)/240);
-    return { candles, ma5, ma10, ma240 };
+    // 20봉 평균 거래량 계산
+    const volSlice = candles.slice(-21, -1);
+    const miniVol20Avg = volSlice.length > 0 ? volSlice.reduce((s,c)=>s+c.vol,0)/volSlice.length : 0;
+    return { candles, ma5, ma10, ma240, miniVol20Avg };
   };
 
   const selectedData = selectedTurn !== null ? getMiniChartData(selectedTurn) : null;
@@ -1252,7 +1302,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             </div>
           </div>
           <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} svgHeight="min(calc(100dvh - 440px), 480px)" />
-          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={28} interval={intervalMode} /></div>
+          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={36} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
         </div>
       </div>
 
