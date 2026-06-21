@@ -471,9 +471,11 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const [selectedTurn, setSelectedTurn] = React.useState<number | null>(null);
 
   const pnl = ((totalAsset / initCash) - 1) * 100;
-  const avgTurnScore = turnScores.length ? Math.round(turnScores.reduce((s, t) => s + t.score, 0) / turnScores.length) : 0;
-  const totalMaxScore = turnScores.reduce((s, t) => s + t.maxScore, 0);
-  const totalGained   = turnScores.reduce((s, t) => s + t.score, 0);
+  // maxScore > 0인 턴만 채점 (보유 중 관망 제외)
+  const scoredTurns   = turnScores.filter(t => t.maxScore > 0);
+  const avgTurnScore  = scoredTurns.length ? Math.round(scoredTurns.reduce((s, t) => s + t.score, 0) / scoredTurns.length) : 0;
+  const totalMaxScore = scoredTurns.reduce((s, t) => s + t.maxScore, 0);
+  const totalGained   = scoredTurns.reduce((s, t) => s + t.score, 0);
   const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
   const iLabel = interval === "1wk" ? "주봉" : "월봉";
   const MAX_TURNS = turnScores.length;
@@ -1067,9 +1069,15 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 	  const didTradeThisTurn = lastTrade && lastTrade.turn === turn;
 
 	  // 최신 turnScores 직접 계산 (클로저 문제 방지)
+	  // 보유 중 관망은 채점 제외 (score: 0, maxScore: 0)
+	  const holdScore: TurnScore = { score: 0, maxScore: 0, action: "hold", reasons: [{ ok: null, text: "보유 유지 — 채점 제외" }] };
+	  const holdTurnScore = (!didTradeThisTurn && holdings > 0)
+		? holdScore
+		: scoreTurnAction("hold", snap, diagnosis);
+
 	  const latestScores = didTradeThisTurn
 		? turnScores
-		: [...turnScores, scoreTurnAction("hold", snap, diagnosis)];
+		: [...turnScores, holdTurnScore];
 
 	  if (!didTradeThisTurn) {
 		setTurnScores(latestScores);
@@ -1077,8 +1085,9 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 
 	  if (turn >= MAX_TURNS - 1) {
 		setShowResult(true);
-		const totalMaxScore = latestScores.reduce((s, t) => s + t.maxScore, 0);
-		const totalGained   = latestScores.reduce((s, t) => s + t.score, 0);
+		const scoredLatest  = latestScores.filter(t => t.maxScore > 0);
+		const totalMaxScore = scoredLatest.reduce((s, t) => s + t.maxScore, 0);
+		const totalGained   = scoredLatest.reduce((s, t) => s + t.score, 0);
 		const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
 		setLastGameAsset(totalAsset);
 		onGameEnd({
