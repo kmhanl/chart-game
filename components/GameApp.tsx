@@ -16,7 +16,7 @@ interface Trade {
   priceNative?: number;
   date?: string;
 }
-interface TurnScore { score: number; maxScore: number; reasons?: Reason[]; action?: string; diagnosis?: Diagnosis | null; above10?: boolean; }
+interface TurnScore { score: number; maxScore: number; reasons?: Reason[]; action?: string; diagnosis?: Diagnosis | null; above10?: boolean; above5?: boolean | null; overheat10?: boolean; volMassiveSell?: boolean; deadCross?: boolean; candleUpperTail?: boolean; }
 interface Reason { ok: boolean | null; text: string; }
 interface Diagnosis {
   stage: string; stageColor: string; stageIcon: string;
@@ -298,7 +298,14 @@ function scoreTurnAction(action: string, snap: Record<string, unknown>, diagnosi
   }
   const clampedScore = Math.max(0, Math.min(maxScore, score));
   const above10Val = snap.above10 as boolean | undefined;
-  return { score: clampedScore, maxScore, reasons, action, diagnosis, above10: above10Val };
+  const above5Val = snap.above5 as boolean | null | undefined;
+  const overheat10Val = snap.overheat10 as boolean | undefined;
+  const volMassiveSellVal = snap.volMassiveSell as boolean | undefined;
+  const deadCrossVal = snap.deadCross as boolean | undefined;
+  // 윗꼬리 감지: snap에 없으므로 candleState 정보를 이용
+  // candleUpperTail: 진단 패널의 buyReason에 "윗꼬리" 포함 여부로 대체
+  const candleUpperTailVal = !!(diagnosis?.buyReason?.includes("윗꼬리") || diagnosis?.buyReason?.includes("매도 압력"));
+  return { score: clampedScore, maxScore, reasons, action, diagnosis, above10: above10Val, above5: above5Val, overheat10: overheat10Val, volMassiveSell: volMassiveSellVal, deadCross: deadCrossVal, candleUpperTail: candleUpperTailVal };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -526,8 +533,22 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
         // 상승 추세 중 관망 제외 조건:
         // 1. 이미 주식 보유 중
         // 2. 해당 턴의 snap에서 10MA 아래 (상승 추세 아님)
-        if (r.text.includes("상승 추세") && holdingsAtTurn[i] > 0) return;
-        if (r.text.includes("상승 추세") && ts.above10 === false) return;
+        if (r.text.includes("상승 추세")) {
+          // 보유 중이면 제외
+          if (holdingsAtTurn[i] > 0) return;
+          // 10MA 아래면 제외
+          if (ts.above10 === false) return;
+          // 5MA 아래면 제외 (단기 추세 이탈)
+          if (ts.above5 === false) return;
+          // 과열 구간 (10MA 이격 +10% 초과)이면 제외
+          if (ts.overheat10 === true) return;
+          // 대량 매도 출현이면 제외
+          if (ts.volMassiveSell === true) return;
+          // 데드크로스 발생이면 제외
+          if (ts.deadCross === true) return;
+          // 윗꼬리 캔들이면 제외 (매도 압력)
+          if (ts.candleUpperTail === true) return;
+        }
         addBad(r.text.replace(/ \(\+\d+.*\)/, ''), i + 1);
       }
     });
@@ -983,7 +1004,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     return null;
   })();
 
-  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio };
+  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio, overheat10 };
 
   const buyableQty    = krwPrice > 0 ? Math.floor(cash / krwPrice) : 0;
   const buyablePctQty = (pct: number) => krwPrice > 0 ? Math.floor((totalAsset * pct / 100) / krwPrice) : 0;
