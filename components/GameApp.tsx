@@ -453,36 +453,104 @@ function ScoreModal({ data, onClose }: { data: TurnScore; onClose: () => void })
   );
 }
 
-function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, market, interval, startDate, endDate, onClose, onRestart }: {
+function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, market, interval, startDate, endDate, allCandles, gameStart, isQQQ: isQQQProp, onClose, onRestart }: {
   trades: Trade[]; turnScores: TurnScore[]; totalAsset: number; initCash: number;
   stockMeta: StockMeta | null; market: string; interval: string;
   startDate: Date | undefined; endDate: Date | undefined;
+  allCandles: Candle[]; gameStart: number; isQQQ: boolean;
   onClose: () => void; onRestart: () => void;
 }) {
+  const [selectedTurn, setSelectedTurn] = React.useState<number | null>(null);
+
   const pnl = ((totalAsset / initCash) - 1) * 100;
   const avgTurnScore = turnScores.length ? Math.round(turnScores.reduce((s, t) => s + t.score, 0) / turnScores.length) : 0;
   const totalMaxScore = turnScores.reduce((s, t) => s + t.maxScore, 0);
   const totalGained   = turnScores.reduce((s, t) => s + t.score, 0);
   const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
+  const iLabel = interval === "1wk" ? "주봉" : "월봉";
+  const MAX_TURNS = turnScores.length;
+
+  // ── A안: 채점 근거 기반 goodPoints/badPoints ──────────────────
   const goodPoints: string[] = [], badPoints: string[] = [];
+  const badWithTurns: { text: string; turns: number[] }[] = [];
+
+  // 턴별 문제점 집계
+  const badTurnMap: Record<string, number[]> = {};
+  const addBad = (key: string, turn: number) => {
+    if (!badTurnMap[key]) badTurnMap[key] = [];
+    badTurnMap[key].push(turn);
+  };
+
   trades.filter(t => t.type === "매수").forEach(t => {
     const snap = t.snap as Record<string, unknown>;
     if (snap?.ma240 != null) {
-      if (snap?.above240)  goodPoints.push("240MA 위에서 매수");
-      else                 badPoints.push("240MA 아래 매수 — 원칙 위반");
+      if (snap?.above240) goodPoints.push("240MA 위에서 매수");
+      else addBad("240MA 아래 매수 — 원칙 위반", t.turn);
     }
-    if (snap?.goldenCross) goodPoints.push("골든크로스 타점 매수");
-    if (!snap?.above10)    badPoints.push("10MA 아래 매수 — 조기 진입");
+    if (snap?.goldenCross) {
+      if (snap?.volSurge) goodPoints.push("거래량 확인 골든크로스 매수");
+      else { goodPoints.push("골든크로스 타점 매수"); addBad("거래량 미확인 돌파 — 신뢰도 낮음", t.turn); }
+    }
+    if (!snap?.above10) addBad("10MA 아래 매수 — 조기 진입", t.turn);
+    if (snap?.volMassiveSell) addBad("대량 매도 출현 중 매수", t.turn);
   });
+
   trades.filter(t => t.type === "매도").forEach(t => {
     const snap = t.snap as Record<string, unknown>;
     if (!snap?.above10)              goodPoints.push("10MA 이탈 후 즉시 매도");
     else if (snap?.above5 === false) goodPoints.push("5MA 이탈 절반 매도 — 추세추종 전략");
-    else if (snap?.above5 === true)  badPoints.push("5MA·10MA 위에서 매도 — 추세 중 조기 청산");
+    else if (snap?.above5 === true)  addBad("5MA·10MA 위에서 매도 — 추세 중 조기 청산", t.turn);
     if (snap?.deadCross)             goodPoints.push("데드크로스 매도 타이밍");
+    if (snap?.volMassiveSell)        goodPoints.push("대량 매도 출현 후 매도");
   });
-  const dedupGood = [...new Set(goodPoints)], dedupBad = [...new Set(badPoints)];
-  const iLabel = interval === "1wk" ? "주봉" : "월봉";
+
+  // 관망 문제 집계
+  turnScores.forEach((ts, i) => {
+    const r = (ts as TurnScore & { reasons?: Reason[] }).reasons ?? [];
+    r.filter(r => r.ok === false).forEach(r => {
+      if (r.text.includes("관망")) addBad(r.text.replace(/ \(\+\d+.*\)/, ''), i + 1);
+    });
+  });
+
+  Object.entries(badTurnMap).forEach(([text, turns]) => {
+    badWithTurns.push({ text, turns });
+    badPoints.push(text);
+  });
+
+  const dedupGood = [...new Set(goodPoints)];
+
+  // ── 턴 색상 계산 ──────────────────────────────────────────────
+  const turnColor = (i: number) => {
+    const ts = turnScores[i];
+    if (!ts) return "#f8f9fa";
+    const pct = ts.maxScore > 0 ? ts.score / ts.maxScore : 0;
+    if (pct >= 0.6) return "#f0fdf4";
+    if (pct <= 0.2) return "#fff5f5";
+    return "#f8f9fa";
+  };
+  const turnBorder = (i: number) => {
+    const ts = turnScores[i];
+    if (!ts) return "0.5px solid #dee2e6";
+    const pct = ts.maxScore > 0 ? ts.score / ts.maxScore : 0;
+    if (pct >= 0.6) return "0.5px solid #86efac";
+    if (pct <= 0.2) return "1.5px solid #fca5a5";
+    return "0.5px solid #dee2e6";
+  };
+
+  // ── C안: 선택 턴 미니 차트 데이터 ────────────────────────────
+  const getMiniChartData = (turn: number) => {
+    const idx = gameStart + turn;
+    const start = Math.max(0, idx - 35);
+    const candles = allCandles.slice(start, idx + 1);
+    const ma5: (number|null)[]  = candles.map((_, i) => i < 4  ? null : candles.slice(i-4,  i+1).reduce((s,c)=>s+c.close,0)/5);
+    const ma10: (number|null)[] = candles.map((_, i) => i < 9  ? null : candles.slice(i-9,  i+1).reduce((s,c)=>s+c.close,0)/10);
+    const ma240: (number|null)[]= candles.map((_, i) => i < 239? null : candles.slice(i-239,i+1).reduce((s,c)=>s+c.close,0)/240);
+    return { candles, ma5, ma10, ma240 };
+  };
+
+  const selectedData = selectedTurn !== null ? getMiniChartData(selectedTurn) : null;
+  const selectedTurnScore = selectedTurn !== null ? turnScores[selectedTurn] : null;
+  const selectedTrade = selectedTurn !== null ? trades.find(t => t.turn === selectedTurn) : null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }}>
       <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", boxShadow: "0 -4px 40px rgba(0,0,0,.2)", width: "min(480px, 100vw)", height: "92dvh", display: "flex", flexDirection: "column", animation: "fadeInScale .2s ease" }}>
@@ -511,28 +579,180 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
             </div>
             <div style={{ fontSize: 11, color: "#adb5bd", marginTop: 4 }}>{followScore >= 80 ? "🏆 추세추종 원칙을 잘 지켰습니다!" : followScore >= 50 ? "📈 절반 이상 원칙을 지켰어요. 더 연습해보세요" : "📚 원칙 학습이 더 필요합니다. 진단 패널을 참고하세요"}</div>
           </div>
+          {/* A안: 잘한 것 */}
           {dedupGood.length > 0 && (
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#166534", marginBottom: 8 }}>✅ 잘한 것</div>
-              {dedupGood.map((g, i) => <div key={i} style={{ fontSize: 12, padding: "6px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, marginBottom: 5, color: "#166534" }}>· {g}</div>)}
+              {dedupGood.map((g, i) => (
+                <div key={i} style={{ fontSize: 12, padding: "7px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, marginBottom: 5, color: "#166534" }}>· {g}</div>
+              ))}
             </div>
           )}
-          {dedupBad.length > 0 && (
+
+          {/* A안: 아쉬운 것 (채점 근거 기반 + 턴 표시) */}
+          {badWithTurns.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#991b1b", marginBottom: 8 }}>❌ 아쉬운 것</div>
-              {dedupBad.map((b, i) => <div key={i} style={{ fontSize: 12, padding: "6px 12px", background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, marginBottom: 5, color: "#991b1b" }}>· {b}</div>)}
+              {badWithTurns.map((b, i) => (
+                <div key={i} style={{ padding: "8px 12px", background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, color: "#991b1b", marginBottom: b.turns.length > 0 ? 4 : 0 }}>· {b.text}{b.turns.length > 1 ? ` (${b.turns.length}회)` : ""}</div>
+                  {b.turns.length > 0 && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {b.turns.map(t => (
+                        <button key={t} onClick={() => setSelectedTurn(selectedTurn === t ? null : t)} style={{
+                          padding: "2px 8px", borderRadius: 5, fontSize: 11, cursor: "pointer",
+                          background: selectedTurn === t ? "#e03131" : "#fff",
+                          color: selectedTurn === t ? "#fff" : "#991b1b",
+                          border: "1px solid #fca5a5", fontFamily: "inherit",
+                        }}>{t}턴</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
+
+          {/* A안: 아쉬운 것이 없을 때 */}
+          {badWithTurns.length === 0 && dedupGood.length > 0 && (
+            <div style={{ marginBottom: 16, padding: "10px 14px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, fontSize: 12, color: "#166534" }}>
+              🏆 이번 게임에서 원칙 위반 없이 매매했습니다!
+            </div>
+          )}
+
+          {/* C안: 턴별 복기 */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#212529", marginBottom: 8 }}>🔍 턴별 복기</div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
+              {Array.from({ length: MAX_TURNS }, (_, i) => {
+                const hasTrade = trades.some(t => t.turn === i);
+                const ts = turnScores[i];
+                const pct = ts && ts.maxScore > 0 ? ts.score / ts.maxScore : 0.5;
+                return (
+                  <button key={i} onClick={() => setSelectedTurn(selectedTurn === i ? null : i)} style={{
+                    width: 28, height: 28, borderRadius: 6, border: selectedTurn === i ? "2px solid #7048e8" : turnBorder(i),
+                    background: selectedTurn === i ? "#f3f0ff" : turnColor(i),
+                    fontSize: 10, fontWeight: hasTrade ? 700 : 400,
+                    color: selectedTurn === i ? "#7048e8" : pct >= 0.6 ? "#166534" : pct <= 0.2 ? "#991b1b" : "#868e96",
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit",
+                    position: "relative",
+                  }}>
+                    {hasTrade ? (trades.find(t=>t.turn===i)?.type === "매수" ? "▲" : "▼") : i + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", gap: 10, fontSize: 11, color: "#868e96", marginBottom: 10 }}>
+              <span style={{ display:"flex",alignItems:"center",gap:3 }}><span style={{ width:10,height:10,borderRadius:3,background:"#f0fdf4",border:"0.5px solid #86efac",display:"inline-block" }}></span>좋은 판단</span>
+              <span style={{ display:"flex",alignItems:"center",gap:3 }}><span style={{ width:10,height:10,borderRadius:3,background:"#fff5f5",border:"1.5px solid #fca5a5",display:"inline-block" }}></span>개선 필요</span>
+              <span style={{ display:"flex",alignItems:"center",gap:3 }}><span style={{ width:10,height:10,borderRadius:3,background:"#f8f9fa",border:"0.5px solid #dee2e6",display:"inline-block" }}></span>중립</span>
+              <span style={{ display:"flex",alignItems:"center",gap:3 }}>▲▼ 거래 발생</span>
+            </div>
+
+            {/* C안: 선택 턴 상세 (미니 차트 + 채점) */}
+            {selectedTurn !== null && selectedData && (
+              <div style={{ border: "1px solid #dee2e6", borderRadius: 12, overflow: "hidden", marginBottom: 8 }}>
+                {/* 미니 차트 */}
+                <div style={{ background: "#fff", borderBottom: "1px solid #e9ecef" }}>
+                  <div style={{ padding: "6px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, borderBottom: "0.5px solid #e9ecef" }}>
+                    <span style={{ fontWeight: 700, color: "#212529" }}>{selectedTurn + 1}턴 — {allCandles[gameStart + selectedTurn]?.date ? fmtDate(allCandles[gameStart + selectedTurn].date) : ""}</span>
+                    {selectedTrade && (
+                      <span style={{ fontWeight: 700, color: selectedTrade.type === "매수" ? "#e03131" : "#1971c2", background: selectedTrade.type === "매수" ? "#fff5f5" : "#e7f5ff", padding: "2px 8px", borderRadius: 5, border: `1px solid ${selectedTrade.type === "매수" ? "#fca5a5" : "#74c0fc"}` }}>
+                        {selectedTrade.type} {selectedTrade.qty}주
+                      </span>
+                    )}
+                  </div>
+                  {(() => {
+                    const { candles, ma5, ma10, ma240 } = selectedData;
+                    if (!candles.length) return null;
+                    const W = 440, H = 140, PAD = { l:8, r:48, t:6, b:6 };
+                    const cw = Math.max(2, (W - PAD.l - PAD.r) / Math.max(candles.length-1,1) * 0.7);
+                    const allP = candles.flatMap(c=>[c.high,c.low]);
+                    const maV = [...ma5,...ma10,...ma240].filter((v): v is number => v!=null);
+                    const minP = Math.min(...allP,...maV)*0.997, maxP = Math.max(...allP,...maV)*1.003;
+                    const sx = (i:number) => PAD.l + (i/Math.max(candles.length-1,1))*(W-PAD.l-PAD.r);
+                    const sy = (p:number) => PAD.t + (H-PAD.t-PAD.b) - ((p-minP)/(maxP-minP))*(H-PAD.t-PAD.b);
+                    const maPath = (vals:(number|null)[], col:string) => {
+                      const pts = vals.map((v,i)=>v!=null?`${sx(i)},${sy(v)}`:null).filter(Boolean);
+                      return pts.length ? <polyline key={col} points={pts.join(" ")} fill="none" stroke={col} strokeWidth="1.2" strokeOpacity="0.9"/> : null;
+                    };
+                    const lbls = [0,0.25,0.5,0.75,1].map(r => {
+                      const p = minP + (maxP-minP)*r;
+                      return { y: sy(p), label: isQQQProp ? `$${p.toFixed(1)}` : Math.round(p).toLocaleString() };
+                    });
+                    return (
+                      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+                        {lbls.map((l,i) => (
+                          <g key={i}>
+                            <line x1={PAD.l} y1={l.y} x2={W-PAD.r} y2={l.y} stroke="#e9ecef" strokeWidth="0.5"/>
+                            <text x={W-PAD.r+3} y={l.y+3} fontSize="8" fill="#adb5bd">{l.label}</text>
+                          </g>
+                        ))}
+                        {candles.map((c,i) => {
+                          const x=sx(i), up=c.close>=c.open, col=up?"#e03131":"#1971c2";
+                          const bT=sy(Math.max(c.open,c.close)), bH=Math.max(1,sy(Math.min(c.open,c.close))-bT);
+                          return <g key={i}><line x1={x} y1={sy(c.high)} x2={x} y2={sy(c.low)} stroke={col} strokeWidth="0.8"/><rect x={x-cw/2} y={bT} width={cw} height={bH} fill={col}/></g>;
+                        })}
+                        {maPath(ma240,"#adb5bd")}{maPath(ma10,"#f97316")}{maPath(ma5,"#7048e8")}
+                        {/* 거래 마커 */}
+                        {selectedTrade && (() => {
+                          const li = candles.length - 1;
+                          const x = sx(li), y = sy(candles[li]?.close ?? 0);
+                          return selectedTrade.type === "매수"
+                            ? <polygon points={`${x},${y-14} ${x-7},${y} ${x+7},${y}`} fill="#e03131" opacity="0.9"/>
+                            : <polygon points={`${x},${y+14} ${x-7},${y} ${x+7},${y}`} fill="#1971c2" opacity="0.9"/>;
+                        })()}
+                      </svg>
+                    );
+                  })()}
+                </div>
+                {/* 채점 상세 */}
+                <div style={{ padding: "10px 12px", background: "#fafafa" }}>
+                  {selectedTurnScore && (
+                    <>
+                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
+                        <span style={{ color:"#495057" }}>점수</span>
+                        <span style={{ fontWeight:700, color: selectedTurnScore.score/selectedTurnScore.maxScore >= 0.6 ? "#2f9e44" : selectedTurnScore.score/selectedTurnScore.maxScore <= 0.2 ? "#e03131" : "#f97316" }}>
+                          {selectedTurnScore.score} / {selectedTurnScore.maxScore}점
+                        </span>
+                      </div>
+                      <div style={{ height:5, background:"#e9ecef", borderRadius:3, marginBottom:8 }}>
+                        <div style={{ width:`${Math.min(selectedTurnScore.maxScore>0?selectedTurnScore.score/selectedTurnScore.maxScore*100:0,100)}%`, height:"100%", background: selectedTurnScore.score/selectedTurnScore.maxScore >= 0.6 ? "#2f9e44" : "#e03131", borderRadius:3 }}/>
+                      </div>
+                      {((selectedTurnScore as TurnScore & { reasons?: Reason[] }).reasons ?? []).map((r,i) => (
+                        <div key={i} style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,padding:"5px 8px",borderRadius:6,marginBottom:4,
+                          background: r.ok===true?"#f0fdf4":r.ok===false?"#fff5f5":"#f8f9fa",
+                          border: `0.5px solid ${r.ok===true?"#86efac":r.ok===false?"#fca5a5":"#dee2e6"}`,
+                          color: r.ok===true?"#166534":r.ok===false?"#991b1b":"#6b7280",
+                        }}>
+                          <span>{r.ok===true?"✅":r.ok===false?"❌":"ℹ️"}</span>
+                          <span>{r.text}</span>
+                        </div>
+                      ))}
+                      {((selectedTurnScore as TurnScore & { diagnosis?: Diagnosis | null }).diagnosis)?.buyReason && (
+                        <div style={{ marginTop:6, padding:"6px 10px", background:"#f3f0ff", borderRadius:8, fontSize:11, color:"#7048e8", lineHeight:1.6 }}>
+                          💬 {(selectedTurnScore as TurnScore & { diagnosis?: Diagnosis | null }).diagnosis?.buyReason}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 매매내역 */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#212529", marginBottom: 8 }}>📋 매매내역</div>
-            <div style={{ maxHeight: 140, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               {!trades.length && <div style={{ color: "#adb5bd", textAlign: "center", padding: "16px 0", fontSize: 13 }}>거래 없음</div>}
               {trades.map((t, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "7px 12px", borderRadius: 8, background: t.type === "매수" ? "#fff5f5" : "#e7f5ff", border: `1px solid ${t.type === "매수" ? "#fca5a5" : "#74c0fc"}` }}>
+                <div key={i} onClick={() => setSelectedTurn(selectedTurn === t.turn ? null : t.turn)} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "7px 12px", borderRadius: 8, background: t.type === "매수" ? "#fff5f5" : "#e7f5ff", border: `1px solid ${t.type === "매수" ? "#fca5a5" : "#74c0fc"}`, cursor: "pointer" }}>
                   <span style={{ fontWeight: 700, color: t.type === "매수" ? "#e03131" : "#1971c2" }}>{t.type}</span>
                   <span style={{ color: "#495057" }}>{t.qty}주</span>
                   <span style={{ color: "#495057" }}>{fmtKRW(t.krwPrice)}</span>
                   <span style={{ color: "#adb5bd" }}>{t.date}</span>
+                  <span style={{ color: "#7048e8", fontSize: 11 }}>{t.turn + 1}턴 →</span>
                 </div>
               ))}
             </div>
@@ -810,6 +1030,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           trades={trades} turnScores={turnScores} totalAsset={totalAsset} initCash={INIT_CASH}
           stockMeta={stockMeta} market={market} interval={intervalMode}
           startDate={gameStartDate} endDate={gameEndDate}
+          allCandles={allCandles} gameStart={gameStart} isQQQ={isQQQ}
           onClose={onBackToLobby}
           onRestart={() => startGame(market, intervalMode, mission, lastGameAsset)}
         />
