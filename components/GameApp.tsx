@@ -1306,7 +1306,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         </div>
       </div>
 
-      {/* MA 상태 (고정 높이) */}
+      {/* MA 상태 + 거래량 카드 (4개) */}
       <div style={{ padding: "4px 10px 0", display: "flex", gap: 5, flexShrink: 0 }}>
         {([{ label:"5MA", st: maStatus5, col:"#7048e8", gap: gap5 }, { label:"10MA", st: maStatus10, col:"#f97316", gap: gap10 }, { label:"240MA", st: maStatus240, col:"#adb5bd", gap: gap240 }]).map(({ label, st, col, gap }) => {
           const isOver10 = label === "10MA" && overheat10;
@@ -1321,6 +1321,25 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             </div>
           );
         })}
+        {/* 거래량 카드 */}
+        {(() => {
+          const volState = volMassiveSell
+            ? { label: "대량 매도", color: "#e03131", bg: "#fff5f5", icon: "🔴", sub: "세력 이탈 주의" }
+            : volSurge && lastCandle && lastCandle.close >= lastCandle.open
+            ? { label: "거래량 급증", color: "#2f9e44", bg: "#f0fdf4", icon: "📈", sub: "양봉 돌파 신호" }
+            : volSurge
+            ? { label: "거래량 급증", color: "#f97316", bg: "#fff4e6", icon: "⚠️", sub: "음봉+급증 주의" }
+            : volShrink
+            ? { label: "거래량 수축", color: "#7048e8", bg: "#f3f0ff", icon: "💤", sub: "방향 확인 대기" }
+            : { label: "거래량 보통", color: "#868e96", bg: "#f8f9fa", icon: "➡️", sub: "특이 신호 없음" };
+          return (
+            <div style={{ flex: 1, height: 52, borderRadius: 9, border: `1px solid ${volState.color}44`, background: volState.bg, padding: "6px 8px", overflow: "hidden" }}>
+              <div style={{ fontSize: 9, color: volState.color, fontWeight: 700, marginBottom: 2 }}>거래량</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: volState.color }}>{volState.icon} {volState.label}</div>
+              <div style={{ fontSize: 9, color: volState.color, marginTop: 1, opacity: 0.8 }}>{volState.sub}</div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* 추세 진단 하단 시트 오버레이 */}
@@ -1365,92 +1384,157 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               <div style={{ color: C.accent, marginTop: 3 }}>→ {diagnosis.suggestion}</div>
               {diagnosis.risk && <div style={{ color: "#c2410c", marginTop: 3 }}>{diagnosis.risk}</div>}
             </div>
-            {/* 1번: 돌파 거래량 확인 */}
-            {goldenCross && (
-              <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${volSurge ? "#bbf7d0" : "#fca5a5"}`, background: volSurge ? "#f0fdf4" : "#fff5f5", marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: volSurge ? "#166534" : "#991b1b", marginBottom: 4 }}>
-                  {volSurge ? "✅ 거래량 확인 돌파" : "⚠️ 거래량 미확인 돌파"}
+            {/* ── 거래량 분석 섹션 ── */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>📊 거래량 분석</div>
+
+              {/* 거래량 바 (항상 표시) */}
+              <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, color: C.sub }}>현재 거래량 / 20봉 평균</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: volMassiveSell ? "#e03131" : volSurge ? "#2f9e44" : C.muted }}>
+                    {Math.round(volRatio * 100)}%
+                  </span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: volSurge ? "#166534" : "#991b1b", marginBottom: 4 }}>
-                  <span>현재 거래량</span>
-                  <span style={{ fontWeight: 700 }}>20봉 평균의 {Math.round(volRatio * 100)}%</span>
+                <div style={{ height: 6, background: "#e9ecef", borderRadius: 3, marginBottom: 4 }}>
+                  <div style={{ width: `${Math.min(volRatio / 2.5 * 100, 100)}%`, height: "100%", borderRadius: 3,
+                    background: volMassiveSell ? "#e03131" : volSurge ? "#2f9e44" : volShrink ? "#7048e8" : "#adb5bd" }} />
                 </div>
-                <div style={{ height: 5, background: "#e9ecef", borderRadius: 3 }}>
-                  <div style={{ width: `${Math.min(volRatio / 2 * 100, 100)}%`, height: "100%", background: volSurge ? "#2f9e44" : "#e03131", borderRadius: 3 }} />
-                </div>
-                <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>
-                  {volSurge ? "신뢰도 높은 돌파 — 성승현 매수 조건 충족" : "거래량 부족 — 눌림 후 재진입 대기 (150% 필요)"}
+                <div style={{ fontSize: 10, color: C.muted }}>
+                  {volMassiveSell ? "⚠️ 기준 150% 초과 + 음봉 — 대량 매도 출현" :
+                   volSurge && lastCandle && lastCandle.close >= lastCandle.open ? "✅ 기준 150% 초과 + 양봉 — 추세 신뢰도 높음" :
+                   volSurge ? "⚠️ 기준 150% 초과 + 음봉 — 매도 압력 주의" :
+                   volShrink ? "💤 4봉 연속 50% 이하 — 방향 확인 대기" :
+                   volDecreasing ? "↘ 거래량 감소 — 매도세 약화" : "→ 보통 수준"}
                 </div>
               </div>
-            )}
 
-            {/* 5번: 대량 매도 경고 */}
-            {volMassiveSell && (
-              <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>⚠️ 대량 매도 출현</div>
-                <div style={{ fontSize: 10, color: "#991b1b", marginBottom: 2 }}>현재봉 거래량 = 20봉 평균의 {Math.round(volRatio * 100)}%</div>
-                <div style={{ fontSize: 10, color: "#c2410c" }}>
-                  {above240 ? "240MA 위 → 단기 조정 가능성, 비중 축소 검토" : "240MA 아래 → 추세 이탈 가능, 매도 검토"}
-                </div>
-              </div>
-            )}
-
-            {/* 4번: 거래량 수축 */}
-            {volShrink && (
-              <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #d0bfff", background: "#f3f0ff", marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 3 }}>💤 거래량 수축 구간</div>
-                <div style={{ fontSize: 10, color: C.accent, marginBottom: 2 }}>4봉 연속 20봉 평균의 50% 이하</div>
-                <div style={{ fontSize: 10, color: "#534AB7" }}>큰 방향성 변동 임박 — 돌파 방향 확인 후 진입</div>
-              </div>
-            )}
-
-            {/* 양음양 / 음양음 3봉 패턴 */}
-            {threeBarPattern && (
-              <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${threeBarPattern.color}44`, background: threeBarPattern.bg, marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: threeBarPattern.color }}>
-                    {threeBarPattern.icon} {threeBarPattern.label} 패턴{threeBarPattern.strong ? " ⭐" : ""}
+              {/* 케이스 1: 골든크로스 + 거래량 */}
+              {goldenCross && (
+                <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${volSurge ? "#bbf7d0" : "#fca5a5"}`, background: volSurge ? "#f0fdf4" : "#fff5f5", marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: volSurge ? "#166534" : "#991b1b", marginBottom: 4 }}>
+                    {volSurge ? "✅ 거래량 확인 돌파 (182%)" : `⚠️ 거래량 미확인 돌파 (${Math.round(volRatio * 100)}%)`}
                   </div>
-                  {/* 3봉 시각화 */}
-                  {(() => {
-                    const bars = threeBarPattern.type === "양음양"
-                      ? [{ h: 16, up: true }, { h: 10, up: false }, { h: 20, up: true }]
-                      : [{ h: 16, up: false }, { h: 10, up: true }, { h: 20, up: false }];
-                    return (
-                      <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 24 }}>
-                        {bars.map((b, i) => (
-                          <div key={i} style={{ width: 7, height: b.h, borderRadius: 2, background: b.up ? "#e03131" : "#1971c2" }} />
-                        ))}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>추세 신호</div>
+                      <div style={{ fontWeight: 700, color: volSurge ? "#166534" : "#991b1b" }}>{volSurge ? "강함" : "약함"}</div>
+                    </div>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>매수 적합</div>
+                      <div style={{ fontWeight: 700, color: volSurge ? "#166534" : "#f97316" }}>{volSurge ? "✅ 적합" : "⏳ 대기"}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.muted }}>
+                    {volSurge ? "성승현 매수 조건 충족 — 1차 매수 진입 고려" : "거래량 부족 — 눌림 확인 후 재진입 대기 (150% 필요)"}
+                  </div>
+                </div>
+              )}
+
+              {/* 케이스 2: 상승 추세 + 거래량 흐름 */}
+              {!goldenCross && above10 && (
+                <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${volDecreasing ? "#bbf7d0" : C.border}`, background: volDecreasing ? "#f0fdf4" : C.bg, marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: volDecreasing ? "#166534" : C.sub, marginBottom: 4 }}>
+                    {volDecreasing ? "📉 거래량 감소 중 (눌림목 신호)" : "📊 상승 추세 + 거래량 흐름"}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", border: `1px solid ${C.border}`, fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>거래량 상태</div>
+                      <div style={{ fontWeight: 700, color: volDecreasing ? "#166534" : C.text }}>
+                        {volMassiveSell ? "대량 매도" : volSurge ? "급증" : volShrink ? "수축" : volDecreasing ? "감소" : "보통"}
                       </div>
-                    );
-                  })()}
+                    </div>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", border: `1px solid ${C.border}`, fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>추가 매수</div>
+                      <div style={{ fontWeight: 700, color: volDecreasing ? "#166534" : "#f97316" }}>
+                        {volDecreasing ? "✅ 검토" : volMassiveSell ? "❌ 자제" : "➡️ 유지"}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.muted }}>
+                    {volDecreasing ? "거래량 감소 눌림 — 분할 매수 적기 (5%)" : volMassiveSell ? "대량 매도 출현 — 비중 축소 검토" : "비중 유지 / 이탈 시 손절"}
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: threeBarPattern.color, marginBottom: 3 }}>{threeBarPattern.desc}</div>
-                <div style={{ fontSize: 10, color: "#495057", background: "rgba(255,255,255,0.6)", borderRadius: 6, padding: "4px 8px" }}>
-                  → {threeBarPattern.suggestion}
+              )}
+
+              {/* 케이스 3: 거래량 수축 */}
+              {volShrink && (
+                <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #d0bfff", background: "#f3f0ff", marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 3 }}>💤 거래량 수축 구간</div>
+                  <div style={{ fontSize: 10, color: "#534AB7", marginBottom: 2 }}>4봉 연속 20봉 평균의 50% 이하</div>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>수축 강도</div>
+                      <div style={{ fontWeight: 700, color: C.accent }}>{Math.round(volRatio * 100)}%</div>
+                    </div>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>전략</div>
+                      <div style={{ fontWeight: 700, color: C.accent }}>관망</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#534AB7" }}>큰 방향성 변동 임박 — 돌파 방향 확인 후 진입</div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 급등 후 5MA 이탈 */}
-            {isBreakAbove5MA && (
-              <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>🚨 급등 후 5MA 이탈</div>
-                <div style={{ fontSize: 10, color: "#991b1b" }}>최근 10봉 내 +30% 이상 급등 후 5MA 하향 이탈</div>
-                <div style={{ fontSize: 10, color: "#c2410c", marginTop: 2, fontWeight: 700 }}>→ 전량 매도 권고 — 추세 전환 가능성</div>
-              </div>
-            )}
-
-            {/* 7번: 거래량 패턴 힌트 */}
-            <div style={{ padding: "8px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, marginBottom: 8, fontSize: 11, color: C.sub }}>
-              <span style={{ fontWeight: 700, color: C.text }}>📊 거래량 </span>
-              {volMassiveSell ? "대량 음봉 거래량 출현 — 세력 이탈 가능성" :
-               volSurge && lastCandle && lastCandle.close >= lastCandle.open ? "거래량 급증 + 양봉 — 추세 신뢰도 높음" :
-               volSurge ? "거래량 급증 + 음봉 — 매도 압력 주의" :
-               volShrink ? "거래량 수축 중 — 관망 적기, 방향 확인 후 진입" :
-               volDecreasing ? "거래량 감소 + 하락 — 매도세 약화, 반등 주시" :
-               "거래량 보통 — 특이 신호 없음"}
+              {/* 케이스 4: 대량 매도 */}
+              {volMassiveSell && (
+                <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>🔴 대량 매도 출현</div>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>세력 이탈</div>
+                      <div style={{ fontWeight: 700, color: "#e03131" }}>가능성 높음</div>
+                    </div>
+                    <div style={{ flex: 1, padding: "5px 8px", borderRadius: 7, background: "rgba(255,255,255,0.7)", fontSize: 10 }}>
+                      <div style={{ color: C.muted }}>대응</div>
+                      <div style={{ fontWeight: 700, color: "#e03131" }}>매도 검토</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#c2410c" }}>
+                    {above240 ? "240MA 위 → 단기 조정 가능성, 비중 축소 검토" : "240MA 아래 → 추세 이탈 가능, 매도 검토"}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* ── 3봉 패턴 + 급등이탈 섹션 ── */}
+            {(threeBarPattern || isBreakAbove5MA) && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>🕯️ 캔들 패턴</div>
+                {threeBarPattern && (
+                  <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${threeBarPattern.color}44`, background: threeBarPattern.bg, marginBottom: 6 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: threeBarPattern.color }}>
+                        {threeBarPattern.icon} {threeBarPattern.label} 패턴{threeBarPattern.strong ? " ⭐" : ""}
+                      </div>
+                      {(() => {
+                        const bars = threeBarPattern.type === "양음양"
+                          ? [{ h: 16, up: true }, { h: 10, up: false }, { h: 20, up: true }]
+                          : [{ h: 16, up: false }, { h: 10, up: true }, { h: 20, up: false }];
+                        return (
+                          <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 24 }}>
+                            {bars.map((b, i) => (
+                              <div key={i} style={{ width: 7, height: b.h, borderRadius: 2, background: b.up ? "#e03131" : "#1971c2" }} />
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div style={{ fontSize: 10, color: threeBarPattern.color, marginBottom: 3 }}>{threeBarPattern.desc}</div>
+                    <div style={{ fontSize: 10, color: "#495057", background: "rgba(255,255,255,0.6)", borderRadius: 6, padding: "4px 8px" }}>
+                      → {threeBarPattern.suggestion}
+                    </div>
+                  </div>
+                )}
+                {isBreakAbove5MA && (
+                  <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>🚨 급등 후 5MA 이탈</div>
+                    <div style={{ fontSize: 10, color: "#991b1b" }}>최근 10봉 내 +30% 이상 급등 후 5MA 하향 이탈</div>
+                    <div style={{ fontSize: 10, color: "#c2410c", marginTop: 2, fontWeight: 700 }}>→ 전량 매도 권고 — 추세 전환 가능성</div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {!ma240Cur && (
               <div style={{ padding: "8px 12px", background: "#f8f9fa", borderRadius: 10, border: "1px solid #e9ecef", fontSize: 11, color: "#868e96", marginBottom: 8 }}>
