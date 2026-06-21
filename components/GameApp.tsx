@@ -923,7 +923,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const gap5   = ma5Cur   ? ((currentPrice - ma5Cur)   / ma5Cur)   * 100 : null;
   const gap10  = ma10Cur  ? ((currentPrice - ma10Cur)  / ma10Cur)  * 100 : null;
   const gap240 = ma240Cur ? ((currentPrice - ma240Cur) / ma240Cur) * 100 : null;
-  const overheat10  = gap10 !== null && gap10 > 10;
+  const overheat10  = gap10 !== null && gap10 > 5;  // 5% 이상이면 과열
   const above240    = ma240Cur ? currentPrice > ma240Cur : false;
   const above10     = ma10Cur  ? currentPrice > ma10Cur  : false;
   const goldenCross = !!(ma5Cur && ma10Cur && ma5Prev && ma10Prev && ma5Prev < ma10Prev && ma5Cur > ma10Cur);
@@ -1062,6 +1062,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     setTrades(p => [...p, { turn, type: "매도", qty, priceNative: currentPrice, krwPrice, date: fmtDate(curDate), snap: { ...snap } }]);
     showModal("매도", qty, qty * krwPrice);
     recordTurnScore("sell");
+    setSellMode("all");  // 절반 매도 후 전체 매도로 리셋
   };
 
 	const nextTurn = () => {
