@@ -260,12 +260,27 @@ function scoreTurnAction(action: string, snap: Record<string, unknown>, diagnosi
     if (snap.nearMA10 && snap.volDecreasing && (!has240 || snap.above240)) {
       score += 10; reasons.push({ ok: true, text: "눌림목 거래량 감소 (+10)" });
     }
+    // 6번: 거래량 기반 채점
+    if (snap.goldenCross && snap.volSurge) {
+      score += 15; maxScore += 15;
+      reasons.push({ ok: true, text: `거래량 확인 돌파 보너스 (+15) — 평균의 ${Math.round((snap.volRatio as number)*100)}%` });
+    } else if (snap.goldenCross && !snap.volSurge) {
+      reasons.push({ ok: false, text: `거래량 미확인 돌파 — 평균의 ${Math.round((snap.volRatio as number)*100)}% (150% 필요)` });
+    }
+    if (snap.volMassiveSell && snap.above240) {
+      score -= 10; reasons.push({ ok: false, text: "대량 매도 출현 중 매수 (-10)" });
+    }
   } else if (action === "sell") {
     maxScore = has240 ? 40 : 35;
     if (snap.deadCross) { score += 20; reasons.push({ ok: true, text: "데드크로스 매도 (+20)" }); }
     if (!snap.above10)          { score += 15; reasons.push({ ok: true,  text: "10MA 이탈 후 매도 (+15)" }); }
     else if (snap.above5 === false) { score += 10; reasons.push({ ok: true, text: "5MA 이탈 — 절반 매도 전략 (+10)" }); }
     else if (snap.above5 === true)  { score +=  0; reasons.push({ ok: null, text: "5MA 위 매도 — 추세 중 조기 청산 (중립)" }); }
+    // 6번: 대량 매도 출현 후 매도
+    if (snap.volMassiveSell) {
+      score += 10; maxScore += 10;
+      reasons.push({ ok: true, text: `대량 음봉 후 매도 (+10) — 평균의 ${Math.round((snap.volRatio as number)*100)}%` });
+    }
     if (has240) {
       if (!snap.above240) { score += 5; reasons.push({ ok: true, text: "240MA 아래 청산 (+5)" }); }
     } else { reasons.push({ ok: null, text: "240MA 데이터 부족 — 해당 항목 제외" }); }
@@ -657,9 +672,35 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     return r[3].vol < avg * 0.7;
   })();
 
+  // ── 거래량 20봉 평균 (성승현 돌파 확인 기준)
+  const vol20Avg = (() => {
+    const n = Math.min(20, visibleCandles.length - 1);
+    if (n < 5) return 0;
+    const slice = visibleCandles.slice(-n - 1, -1);
+    return slice.reduce((s, c) => s + c.vol, 0) / slice.length;
+  })();
+  const currentVol   = lastCandle?.vol ?? 0;
+  const volRatio     = vol20Avg > 0 ? currentVol / vol20Avg : 0; // 1.0 = 평균
+  const volSurge     = volRatio >= 1.5;   // 1번: 돌파 거래량 (150% 이상)
+  const volMassiveSell = !!(volRatio >= 2.0 && lastCandle && lastCandle.close < lastCandle.open); // 5번: 대량 음봉
+  const volShrink    = (() => {           // 4번: 수축 (연속 3봉 이상 50% 이하)
+    if (visibleCandles.length < 4) return false;
+    const r = visibleCandles.slice(-4);
+    return r.every(c => vol20Avg > 0 && c.vol < vol20Avg * 0.5);
+  })();
+
+  // 5MA 이탈 + 급등 종목 전량매도 신호
+  // 급등 = 최근 10봉 내 +30% 이상 상승 후 현재 5MA 아래
+  const isBreakAbove5MA = above5 === false && (() => {
+    if (visibleCandles.length < 11) return false;
+    const tenBack = visibleCandles[visibleCandles.length - 11]?.close ?? 0;
+    const peak    = Math.max(...visibleCandles.slice(-10).map(c => c.high));
+    return tenBack > 0 && (peak / tenBack - 1) > 0.30;
+  })();
+
   const diagnosis = diagnoseTrend(currentPrice, prevPrice, ma5Cur ?? null, ma10Cur ?? null, ma240Cur ?? null, ma5Prev ?? null, ma10Prev ?? null, lastCandle, visibleCandles);
   const above5 = ma5Cur ? currentPrice > ma5Cur : null;
-  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing };
+  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio };
 
   const buyableQty    = krwPrice > 0 ? Math.floor(cash / krwPrice) : 0;
   const buyablePctQty = (pct: number) => krwPrice > 0 ? Math.floor((totalAsset * pct / 100) / krwPrice) : 0;
@@ -888,6 +929,65 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               <div style={{ color: C.accent, marginTop: 3 }}>→ {diagnosis.suggestion}</div>
               {diagnosis.risk && <div style={{ color: "#c2410c", marginTop: 3 }}>{diagnosis.risk}</div>}
             </div>
+            {/* 1번: 돌파 거래량 확인 */}
+            {goldenCross && (
+              <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${volSurge ? "#bbf7d0" : "#fca5a5"}`, background: volSurge ? "#f0fdf4" : "#fff5f5", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: volSurge ? "#166534" : "#991b1b", marginBottom: 4 }}>
+                  {volSurge ? "✅ 거래량 확인 돌파" : "⚠️ 거래량 미확인 돌파"}
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: volSurge ? "#166534" : "#991b1b", marginBottom: 4 }}>
+                  <span>현재 거래량</span>
+                  <span style={{ fontWeight: 700 }}>20봉 평균의 {Math.round(volRatio * 100)}%</span>
+                </div>
+                <div style={{ height: 5, background: "#e9ecef", borderRadius: 3 }}>
+                  <div style={{ width: `${Math.min(volRatio / 2 * 100, 100)}%`, height: "100%", background: volSurge ? "#2f9e44" : "#e03131", borderRadius: 3 }} />
+                </div>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 3 }}>
+                  {volSurge ? "신뢰도 높은 돌파 — 성승현 매수 조건 충족" : "거래량 부족 — 눌림 후 재진입 대기 (150% 필요)"}
+                </div>
+              </div>
+            )}
+
+            {/* 5번: 대량 매도 경고 */}
+            {volMassiveSell && (
+              <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>⚠️ 대량 매도 출현</div>
+                <div style={{ fontSize: 10, color: "#991b1b", marginBottom: 2 }}>현재봉 거래량 = 20봉 평균의 {Math.round(volRatio * 100)}%</div>
+                <div style={{ fontSize: 10, color: "#c2410c" }}>
+                  {above240 ? "240MA 위 → 단기 조정 가능성, 비중 축소 검토" : "240MA 아래 → 추세 이탈 가능, 매도 검토"}
+                </div>
+              </div>
+            )}
+
+            {/* 4번: 거래량 수축 */}
+            {volShrink && (
+              <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #d0bfff", background: "#f3f0ff", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 3 }}>💤 거래량 수축 구간</div>
+                <div style={{ fontSize: 10, color: C.accent, marginBottom: 2 }}>4봉 연속 20봉 평균의 50% 이하</div>
+                <div style={{ fontSize: 10, color: "#534AB7" }}>큰 방향성 변동 임박 — 돌파 방향 확인 후 진입</div>
+              </div>
+            )}
+
+            {/* 급등 후 5MA 이탈 */}
+            {isBreakAbove5MA && (
+              <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>🚨 급등 후 5MA 이탈</div>
+                <div style={{ fontSize: 10, color: "#991b1b" }}>최근 10봉 내 +30% 이상 급등 후 5MA 하향 이탈</div>
+                <div style={{ fontSize: 10, color: "#c2410c", marginTop: 2, fontWeight: 700 }}>→ 전량 매도 권고 — 추세 전환 가능성</div>
+              </div>
+            )}
+
+            {/* 7번: 거래량 패턴 힌트 */}
+            <div style={{ padding: "8px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, marginBottom: 8, fontSize: 11, color: C.sub }}>
+              <span style={{ fontWeight: 700, color: C.text }}>📊 거래량 </span>
+              {volMassiveSell ? "대량 음봉 거래량 출현 — 세력 이탈 가능성" :
+               volSurge && lastCandle && lastCandle.close >= lastCandle.open ? "거래량 급증 + 양봉 — 추세 신뢰도 높음" :
+               volSurge ? "거래량 급증 + 음봉 — 매도 압력 주의" :
+               volShrink ? "거래량 수축 중 — 관망 적기, 방향 확인 후 진입" :
+               volDecreasing ? "거래량 감소 + 하락 — 매도세 약화, 반등 주시" :
+               "거래량 보통 — 특이 신호 없음"}
+            </div>
+
             {!ma240Cur && (
               <div style={{ padding: "8px 12px", background: "#f8f9fa", borderRadius: 10, border: "1px solid #e9ecef", fontSize: 11, color: "#868e96", marginBottom: 8 }}>
                 ℹ️ 월봉은 240봉 데이터가 부족하여 240MA 없이 진행됩니다.
@@ -914,7 +1014,12 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                   {isQQQ && <span style={{ fontSize: 9, color: C.muted, marginLeft: 4 }}>≈ {fmtKRW(krwPrice)}</span>}
                 </div>
               </div>
-              {candleState && <div style={{ fontSize: 9, color: C.sub, marginTop: 1 }}>{candleState.label} · {candleState.desc}</div>}
+              {volMassiveSell
+                ? <div style={{ fontSize: 9, color: "#e03131", fontWeight: 700, marginTop: 1 }}>⚠️ 대량 매도 출현 — 세력 이탈 가능</div>
+                : isBreakAbove5MA
+                ? <div style={{ fontSize: 9, color: "#1971c2", fontWeight: 700, marginTop: 1 }}>🚨 급등 후 5MA 이탈 — 전량 매도 고려</div>
+                : candleState && <div style={{ fontSize: 9, color: C.sub, marginTop: 1 }}>{candleState.label} · {candleState.desc}</div>
+              }
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 8, color: C.muted }}>현금최대 / {buyPct}%</div>
@@ -971,11 +1076,25 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           </div>
 
           <div style={{ marginBottom: 9 }}>
-            <div style={{ fontSize: 10, color: C.muted, marginBottom: 6 }}>매도 방식</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: C.muted }}>매도 방식</span>
+              {isBreakAbove5MA && (
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", background: "#e03131", borderRadius: 5, padding: "1px 6px" }}>
+                  🚨 전량 매도 권고
+                </span>
+              )}
+            </div>
             <div style={{ display: "flex", gap: 5 }}>
-              {([["all","전체 매도"],["half","◑ 절반 매도"]] as const).map(([k,v]) => {
+              {([["all", isBreakAbove5MA ? "🚨 전량 매도" : "전체 매도"], ["half","◑ 절반 매도"]] as const).map(([k,v]) => {
                 const a = sellMode === k;
-                return <button key={k} onClick={() => setSellMode(k)} style={{ padding: "6px 12px", borderRadius: 7, border: `1.5px solid ${a ? C.blue : C.border2}`, background: a ? C.blueBg : C.bg, color: a ? C.blue : C.sub, fontSize: 11, cursor: "pointer", fontWeight: a ? 700 : 400, fontFamily: "inherit" }}>{v}</button>;
+                const isFullSell = k === "all" && isBreakAbove5MA;
+                return <button key={k} onClick={() => setSellMode(k)} style={{
+                  padding: "6px 12px", borderRadius: 7,
+                  border: `1.5px solid ${isFullSell ? "#e03131" : a ? C.blue : C.border2}`,
+                  background: isFullSell ? "#fff5f5" : a ? C.blueBg : C.bg,
+                  color: isFullSell ? "#e03131" : a ? C.blue : C.sub,
+                  fontSize: 11, cursor: "pointer", fontWeight: (a || isFullSell) ? 700 : 400, fontFamily: "inherit"
+                }}>{v}</button>;
               })}
             </div>
           </div>
