@@ -689,6 +689,10 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     return r.every(c => vol20Avg > 0 && c.vol < vol20Avg * 0.5);
   })();
 
+
+  const diagnosis = diagnoseTrend(currentPrice, prevPrice, ma5Cur ?? null, ma10Cur ?? null, ma240Cur ?? null, ma5Prev ?? null, ma10Prev ?? null, lastCandle, visibleCandles);
+  const above5 = ma5Cur ? currentPrice > ma5Cur : null;
+
   // 5MA 이탈 + 급등 종목 전량매도 신호
   // 급등 = 최근 10봉 내 +30% 이상 상승 후 현재 5MA 아래
   const isBreakAbove5MA = above5 === false && (() => {
@@ -697,9 +701,6 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     const peak    = Math.max(...visibleCandles.slice(-10).map(c => c.high));
     return tenBack > 0 && (peak / tenBack - 1) > 0.30;
   })();
-
-  const diagnosis = diagnoseTrend(currentPrice, prevPrice, ma5Cur ?? null, ma10Cur ?? null, ma240Cur ?? null, ma5Prev ?? null, ma10Prev ?? null, lastCandle, visibleCandles);
-  const above5 = ma5Cur ? currentPrice > ma5Cur : null;
   const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio };
 
   const buyableQty    = krwPrice > 0 ? Math.floor(cash / krwPrice) : 0;
