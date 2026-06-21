@@ -485,30 +485,47 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
     const snap = t.snap as Record<string, unknown>;
     if (snap?.ma240 != null) {
       if (snap?.above240) goodPoints.push("240MA 위에서 매수");
-      else addBad("240MA 아래 매수 — 원칙 위반", t.turn);
+      else addBad("240MA 아래 매수 — 원칙 위반", t.turn + 1);
     }
     if (snap?.goldenCross) {
       if (snap?.volSurge) goodPoints.push("거래량 확인 골든크로스 매수");
-      else { goodPoints.push("골든크로스 타점 매수"); addBad("거래량 미확인 돌파 — 신뢰도 낮음", t.turn); }
+      else { goodPoints.push("골든크로스 타점 매수"); addBad("거래량 미확인 돌파 — 신뢰도 낮음", t.turn + 1); }
     }
-    if (!snap?.above10) addBad("10MA 아래 매수 — 조기 진입", t.turn);
-    if (snap?.volMassiveSell) addBad("대량 매도 출현 중 매수", t.turn);
+    if (!snap?.above10) addBad("10MA 아래 매수 — 조기 진입", t.turn + 1);
+    if (snap?.volMassiveSell) addBad("대량 매도 출현 중 매수", t.turn + 1);
   });
 
   trades.filter(t => t.type === "매도").forEach(t => {
     const snap = t.snap as Record<string, unknown>;
     if (!snap?.above10)              goodPoints.push("10MA 이탈 후 즉시 매도");
     else if (snap?.above5 === false) goodPoints.push("5MA 이탈 절반 매도 — 추세추종 전략");
-    else if (snap?.above5 === true)  addBad("5MA·10MA 위에서 매도 — 추세 중 조기 청산", t.turn);
+    else if (snap?.above5 === true)  addBad("5MA·10MA 위에서 매도 — 추세 중 조기 청산", t.turn + 1);
     if (snap?.deadCross)             goodPoints.push("데드크로스 매도 타이밍");
     if (snap?.volMassiveSell)        goodPoints.push("대량 매도 출현 후 매도");
   });
 
-  // 관망 문제 집계
+  // 관망 문제 집계 (보유 주식 있는 턴은 "상승 추세 중 관망" 제외)
+  // 턴별 보유 수량 계산
+  const holdingsAtTurn: Record<number, number> = {};
+  let runningHoldings = 0;
+  for (let i = 0; i < (turnScores.length || 50); i++) {
+    const trade = trades.find(t => t.turn === i);
+    if (trade) {
+      runningHoldings = trade.type === "매수"
+        ? runningHoldings + trade.qty
+        : Math.max(0, runningHoldings - trade.qty);
+    }
+    holdingsAtTurn[i] = runningHoldings;
+  }
+
   turnScores.forEach((ts, i) => {
     const r = (ts as TurnScore & { reasons?: Reason[] }).reasons ?? [];
     r.filter(r => r.ok === false).forEach(r => {
-      if (r.text.includes("관망")) addBad(r.text.replace(/ \(\+\d+.*\)/, ''), i + 1);
+      if (r.text.includes("관망")) {
+        // 상승 추세 중 관망인데 이미 주식을 보유 중이면 제외
+        if (r.text.includes("상승 추세") && holdingsAtTurn[i] > 0) return;
+        addBad(r.text.replace(/ \(\+\d+.*\)/, ''), i + 1);
+      }
     });
   });
 
@@ -541,7 +558,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const getMiniChartData = (turn: number) => {
     const idx = gameStart + turn;
     const start = Math.max(0, idx - 35);
-    const candles = allCandles.slice(start, idx + 1);
+    const candles = allCandles.slice(start, idx);  // idx 미포함 = turn 기준 봉
     const ma5: (number|null)[]  = candles.map((_, i) => i < 4  ? null : candles.slice(i-4,  i+1).reduce((s,c)=>s+c.close,0)/5);
     const ma10: (number|null)[] = candles.map((_, i) => i < 9  ? null : candles.slice(i-9,  i+1).reduce((s,c)=>s+c.close,0)/10);
     const ma240: (number|null)[]= candles.map((_, i) => i < 239? null : candles.slice(i-239,i+1).reduce((s,c)=>s+c.close,0)/240);
@@ -599,10 +616,10 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
                   {b.turns.length > 0 && (
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {b.turns.map(t => (
-                        <button key={t} onClick={() => setSelectedTurn(selectedTurn === t ? null : t)} style={{
+                        <button key={t} onClick={() => setSelectedTurn(selectedTurn === t - 1 ? null : t - 1)} style={{
                           padding: "2px 8px", borderRadius: 5, fontSize: 11, cursor: "pointer",
-                          background: selectedTurn === t ? "#e03131" : "#fff",
-                          color: selectedTurn === t ? "#fff" : "#991b1b",
+                          background: selectedTurn === t - 1 ? "#e03131" : "#fff",
+                          color: selectedTurn === t - 1 ? "#fff" : "#991b1b",
                           border: "1px solid #fca5a5", fontFamily: "inherit",
                         }}>{t}턴</button>
                       ))}
@@ -921,6 +938,47 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     const peak    = Math.max(...visibleCandles.slice(-10).map(c => c.high));
     return tenBack > 0 && (peak / tenBack - 1) > 0.30;
   })();
+  // ── 3봉 패턴 감지 (양음양 / 음양음)
+  const threeBarPattern = (() => {
+    if (visibleCandles.length < 3) return null;
+    const [c1, c2, c3] = visibleCandles.slice(-3);
+    const up1 = c1.close >= c1.open;
+    const up2 = c2.close >= c2.open;
+    const up3 = c3.close >= c3.open;
+    // 양음양: 상승 추세 중 눌림 후 재상승
+    if (up1 && !up2 && up3) {
+      // 조건 강화: c3가 c1 고점 근처까지 회복 (80% 이상)
+      const recovery = (c3.close - c2.low) / (c1.high - c2.low);
+      if (recovery >= 0.5) {
+        const isStrong = c3.close > c1.close; // c3가 c1 종가 돌파 시 강한 신호
+        return {
+          type: "양음양" as const,
+          label: isStrong ? "양음양 돌파" : "양음양",
+          icon: "🕯️",
+          color: "#e03131",
+          bg: "#fff5f5",
+          desc: isStrong ? "눌림 후 전고점 돌파 — 강한 매수 신호" : "눌림목 소화 후 재상승 — 상승 지속 가능",
+          suggestion: isStrong ? "비중 추가 적극 검토" : "보유 유지 또는 소량 추가",
+          strong: isStrong,
+        };
+      }
+    }
+    // 음양음: 하락 추세 중 반등 후 재하락
+    if (!up1 && up2 && !up3) {
+      return {
+        type: "음양음" as const,
+        label: "음양음",
+        icon: "🕯️",
+        color: "#1971c2",
+        bg: "#e7f5ff",
+        desc: "반등 소화 후 재하락 — 하락 지속 가능",
+        suggestion: "매도 검토 또는 관망",
+        strong: false,
+      };
+    }
+    return null;
+  })();
+
   const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio };
 
   const buyableQty    = krwPrice > 0 ? Math.floor(cash / krwPrice) : 0;
@@ -1190,6 +1248,30 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               </div>
             )}
 
+            {/* 양음양 / 음양음 3봉 패턴 */}
+            {threeBarPattern && (
+              <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${threeBarPattern.color}44`, background: threeBarPattern.bg, marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: threeBarPattern.color }}>
+                    {threeBarPattern.icon} {threeBarPattern.label} 패턴{threeBarPattern.strong ? " ⭐" : ""}
+                  </div>
+                  {/* 3봉 시각화 */}
+                  <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 24 }}>
+                    {threeBarPattern.type === "양음양"
+                      ? [{ h: 16, up: true }, { h: 10, up: false }, { h: 20, up: true }]
+                      : [{ h: 16, up: false }, { h: 10, up: true }, { h: 20, up: false }]
+                    }.map((b, i) => (
+                      <div key={i} style={{ width: 7, height: b.h, borderRadius: 2, background: b.up ? "#e03131" : "#1971c2" }} />
+                    ))}
+                  </div>
+                </div>
+                <div style={{ fontSize: 10, color: threeBarPattern.color, marginBottom: 3 }}>{threeBarPattern.desc}</div>
+                <div style={{ fontSize: 10, color: "#495057", background: "rgba(255,255,255,0.6)", borderRadius: 6, padding: "4px 8px" }}>
+                  → {threeBarPattern.suggestion}
+                </div>
+              </div>
+            )}
+
             {/* 급등 후 5MA 이탈 */}
             {isBreakAbove5MA && (
               <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 8 }}>
@@ -1240,6 +1322,10 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                 ? <div style={{ fontSize: 9, color: "#e03131", fontWeight: 700, marginTop: 1 }}>⚠️ 대량 매도 출현 — 세력 이탈 가능</div>
                 : isBreakAbove5MA
                 ? <div style={{ fontSize: 9, color: "#1971c2", fontWeight: 700, marginTop: 1 }}>🚨 급등 후 5MA 이탈 — 전량 매도 고려</div>
+                : threeBarPattern
+                ? <div style={{ fontSize: 9, color: threeBarPattern.color, fontWeight: 700, marginTop: 1 }}>
+                    {threeBarPattern.icon} {threeBarPattern.label} — {threeBarPattern.desc}
+                  </div>
                 : candleState && <div style={{ fontSize: 9, color: C.sub, marginTop: 1 }}>{candleState.label} · {candleState.desc}</div>
               }
             </div>
