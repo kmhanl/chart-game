@@ -16,7 +16,7 @@ interface Trade {
   priceNative?: number;
   date?: string;
 }
-interface TurnScore { score: number; maxScore: number; reasons?: Reason[]; action?: string; diagnosis?: Diagnosis | null; }
+interface TurnScore { score: number; maxScore: number; reasons?: Reason[]; action?: string; diagnosis?: Diagnosis | null; above10?: boolean; }
 interface Reason { ok: boolean | null; text: string; }
 interface Diagnosis {
   stage: string; stageColor: string; stageIcon: string;
@@ -297,7 +297,8 @@ function scoreTurnAction(action: string, snap: Record<string, unknown>, diagnosi
     }
   }
   const clampedScore = Math.max(0, Math.min(maxScore, score));
-  return { score: clampedScore, maxScore, reasons, action, diagnosis };
+  const above10Val = snap.above10 as boolean | undefined;
+  return { score: clampedScore, maxScore, reasons, action, diagnosis, above10: above10Val };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -522,8 +523,11 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
     const r = (ts as TurnScore & { reasons?: Reason[] }).reasons ?? [];
     r.filter(r => r.ok === false).forEach(r => {
       if (r.text.includes("관망")) {
-        // 상승 추세 중 관망인데 이미 주식을 보유 중이면 제외
+        // 상승 추세 중 관망 제외 조건:
+        // 1. 이미 주식 보유 중
+        // 2. 해당 턴의 snap에서 10MA 아래 (상승 추세 아님)
         if (r.text.includes("상승 추세") && holdingsAtTurn[i] > 0) return;
+        if (r.text.includes("상승 추세") && ts.above10 === false) return;
         addBad(r.text.replace(/ \(\+\d+.*\)/, ''), i + 1);
       }
     });
