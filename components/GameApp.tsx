@@ -304,7 +304,7 @@ function scoreTurnAction(action: string, snap: Record<string, unknown>, diagnosi
   const deadCrossVal = snap.deadCross as boolean | undefined;
   // 윗꼬리 감지: snap에 없으므로 candleState 정보를 이용
   // candleUpperTail: 진단 패널의 buyReason에 "윗꼬리" 포함 여부로 대체
-  const candleUpperTailVal = !!(diagnosis?.buyReason?.includes("윗꼬리") || diagnosis?.buyReason?.includes("매도 압력"));
+  const candleUpperTailVal = !!(snap.upperTailSignal as boolean);
   return { score: clampedScore, maxScore, reasons, action, diagnosis, above10: above10Val, above5: above5Val, overheat10: overheat10Val, volMassiveSell: volMassiveSellVal, deadCross: deadCrossVal, candleUpperTail: candleUpperTailVal };
 }
 
@@ -1004,7 +1004,15 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     return null;
   })();
 
-  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio, overheat10 };
+  // 윗꼬리 감지: 윗꼬리 > 몸통 * 1.5
+  const upperTailSignal = (() => {
+    if (!lastCandle) return false;
+    const body  = Math.abs(lastCandle.close - lastCandle.open);
+    const upper = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
+    return upper > body * 1.5;
+  })();
+
+  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio, overheat10, upperTailSignal };
 
   const buyableQty    = krwPrice > 0 ? Math.floor(cash / krwPrice) : 0;
   const buyablePctQty = (pct: number) => krwPrice > 0 ? Math.floor((totalAsset * pct / 100) / krwPrice) : 0;
