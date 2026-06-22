@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import type { User } from "@supabase/supabase-js";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -898,6 +898,65 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
             )}
           </div>
 
+          {/* 📊 누적 통계 패널 */}
+          {(() => {
+            const stats = loadStats();
+            if (stats.totalGames < 1) return null;
+            const avgPnl  = stats.totalPnl / stats.totalGames;
+            const winRate = Math.round((stats.winGames / stats.totalGames) * 100);
+            const patterns = Object.entries(stats.entryPatterns).sort((a, b) => b[1].count - a[1].count);
+            const pClr: Record<string, string> = { "골든크로스":"#2f9e44","눌림목진입":"#2f9e44","10MA위진입":"#7048e8","과열구간진입":"#e03131","10MA아래진입":"#e03131" };
+            const worst = [...patterns].filter(([,v])=>v.count>=2).sort(([,a],[,b])=>(a.wins/a.count)-(b.wins/b.count))[0];
+            return (
+              <div style={{ marginBottom: 16, background: "#f8f9ff", border: "1px solid #e0e7ff", borderRadius: 12, padding: "12px 14px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#4338ca", marginBottom: 10 }}>
+                  📊 나만의 매매 통계
+                  <span style={{ fontSize: 10, fontWeight: 400, color: "#6366f1", marginLeft: 6 }}>({stats.totalGames}게임 누적)</span>
+                </div>
+                {/* 요약 카드 */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, marginBottom: 12 }}>
+                  {[
+                    { label:"평균 수익률", value:`${avgPnl>=0?"+":""}${avgPnl.toFixed(1)}%`, color: avgPnl>=0?"#e03131":"#1971c2" },
+                    { label:"승률",        value:`${winRate}%`,  color:"#7048e8" },
+                    { label:"총 게임",     value:`${stats.totalGames}회`, color:"#495057" },
+                  ].map(c => (
+                    <div key={c.label} style={{ background:"#fff", borderRadius:8, border:"1px solid #e0e7ff", padding:"8px 10px", textAlign:"center" }}>
+                      <div style={{ fontSize:9, color:"#adb5bd", marginBottom:2 }}>{c.label}</div>
+                      <div style={{ fontSize:15, fontWeight:800, color:c.color }}>{c.value}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* 진입 패턴별 승률 바 */}
+                {patterns.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color:"#212529", marginBottom: 8 }}>진입 패턴별 승률</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom: worst ? 10 : 0 }}>
+                      {patterns.map(([key, val]) => {
+                        const wr = val.count > 0 ? Math.round(val.wins / val.count * 100) : 0;
+                        const bc = pClr[key] ?? "#868e96";
+                        return (
+                          <div key={key} style={{ display:"grid", gridTemplateColumns:"90px 1fr 42px", alignItems:"center", gap:8 }}>
+                            <div style={{ fontSize:11, color:"#495057", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{key}</div>
+                            <div style={{ background:"#e9ecef", borderRadius:99, height:8, overflow:"hidden" }}>
+                              <div style={{ width:`${wr}%`, height:"100%", background:bc, borderRadius:99 }} />
+                            </div>
+                            <div style={{ fontSize:11, fontWeight:700, color:bc, textAlign:"right" }}>{wr}%</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* 인사이트 */}
+                    {worst && (
+                      <div style={{ padding:"8px 12px", background:"#fff7ed", borderRadius:8, border:"1px solid #fed7aa", fontSize:11, color:"#9a3412", lineHeight:1.5 }}>
+                        💡 <b>{worst[0]}</b> 승률 {Math.round(worst[1].wins/worst[1].count*100)}% — 이 패턴 진입을 줄이면 수익률이 개선됩니다.
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
           {/* 매매내역 */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#212529", marginBottom: 8 }}>📋 매매내역</div>
@@ -927,6 +986,119 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
 // ══════════════════════════════════════════════════════════════════════════════
 // 메인 GameApp
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 📊 누적 통계 유틸 (localStorage)
+// ══════════════════════════════════════════════════════════════════════════════
+const STATS_KEY = "chartgame_stats_v1";
+interface GameStats {
+  totalGames: number;
+  totalPnl:   number;
+  winGames:   number;
+  entryPatterns: Record<string, { count: number; wins: number; pnlSum: number }>;
+}
+function loadStats(): GameStats {
+  try {
+    const raw = localStorage.getItem(STATS_KEY);
+    if (raw) return JSON.parse(raw) as GameStats;
+  } catch { /* ignore */ }
+  return { totalGames: 0, totalPnl: 0, winGames: 0, entryPatterns: {} };
+}
+function saveStats(s: GameStats) {
+  try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
+}
+function appendGameToStats(pnlPct: number, trades: Trade[]): GameStats {
+  const stats = loadStats();
+  stats.totalGames += 1;
+  stats.totalPnl   += pnlPct;
+  if (pnlPct > 0) stats.winGames += 1;
+  trades.filter(t => t.type === "매수").forEach(t => {
+    const snap = t.snap as Record<string, unknown>;
+    const key =
+      snap.goldenCross                ? "골든크로스" :
+      !snap.above10                   ? "10MA아래진입" :
+      (snap.overheat10 as boolean)    ? "과열구간진입" :
+      (snap.nearMA10   as boolean)    ? "눌림목진입"   :
+                                        "10MA위진입";
+    if (!stats.entryPatterns[key])
+      stats.entryPatterns[key] = { count: 0, wins: 0, pnlSum: 0 };
+    stats.entryPatterns[key].count  += 1;
+    stats.entryPatterns[key].pnlSum += pnlPct;
+    if (pnlPct > 0) stats.entryPatterns[key].wins += 1;
+  });
+  saveStats(stats);
+  return stats;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 📈 N차 파동 감지
+// ══════════════════════════════════════════════════════════════════════════════
+interface WaveSegment {
+  startIdx: number;
+  endIdx:   number;
+  type:     "상승" | "눌림";
+  waveNum?: number;
+}
+function detectWaves(candles: Candle[], ma10: (number | null)[]): WaveSegment[] {
+  if (candles.length < 4) return [];
+  const segs: WaveSegment[] = [];
+  let segStart = 0;
+  let prevAbove = candles[0].close > (ma10[0] ?? candles[0].close);
+  let riseCount = 0;
+  for (let i = 1; i < candles.length; i++) {
+    const above = candles[i].close > (ma10[i] ?? candles[i].close);
+    if (above !== prevAbove) {
+      const type: "상승" | "눌림" = prevAbove ? "상승" : "눌림";
+      if (type === "상승") riseCount++;
+      segs.push({ startIdx: segStart, endIdx: i - 1, type, waveNum: type === "상승" ? riseCount : undefined });
+      segStart = i;
+      prevAbove = above;
+    }
+  }
+  const lastType: "상승" | "눌림" = prevAbove ? "상승" : "눌림";
+  if (lastType === "상승") riseCount++;
+  segs.push({ startIdx: segStart, endIdx: candles.length - 1, type: lastType, waveNum: lastType === "상승" ? riseCount : undefined });
+  return segs;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 💬 코치 메시지 생성
+// ══════════════════════════════════════════════════════════════════════════════
+interface CoachMsg {
+  level:     "good" | "warn" | "danger" | "info";
+  title:     string;
+  body:      string;
+  principle?: string;
+}
+function getCoachMsg(
+  above10: boolean, goldenCross: boolean, deadCross: boolean,
+  volMassiveSell: boolean, nearMA10: boolean, overheat10: boolean,
+  volDecreasing: boolean, gap10: number | null, holdings: number, turn: number
+): CoachMsg {
+  const g = gap10 ?? 0;
+  if (deadCross)
+    return { level:"danger", title:"데드크로스 발생!", body:"5MA가 10MA를 하향 돌파했습니다. 보유 중이라면 즉시 매도를 검토하세요.", principle:"원칙 #7" };
+  if (volMassiveSell)
+    return { level:"danger", title:"대량 매도 출현", body:"세력이 이탈하는 신호일 수 있습니다. 비중 축소를 고려하세요.", principle:"원칙 #6" };
+  if (!above10 && holdings > 0)
+    return { level:"danger", title:"10MA 이탈!", body:"보유 종목이 10MA 아래로 내려왔습니다. 원칙대로 손절을 검토하세요.", principle:"원칙 #7" };
+  if (goldenCross)
+    return { level:"good", title:"골든크로스 발생", body:"5MA가 10MA를 상향 돌파했습니다. 거래량 확인 후 진입을 고려하세요.", principle:"원칙 #12" };
+  if (above10 && nearMA10 && volDecreasing)
+    return { level:"good", title:"눌림목 진입 구간", body:`이격도 ${g.toFixed(1)}%, 거래량 감소. 분할 매수 최적 타이밍입니다.`, principle:"원칙 #13" };
+  if (above10 && g > 10)
+    return { level:"warn", title:`과열 구간 (이격도 ${g.toFixed(1)}%)`, body:"추격 매수를 피하고 눌림목을 기다리세요. 보유 중이면 절반 매도 고려.", principle:"원칙 #4" };
+  if (above10 && g > 5)
+    return { level:"warn", title:`이격도 ${g.toFixed(1)}% — 추가 매수 주의`, body:"이격도가 벌어지고 있습니다. 신규 진입보다 보유 유지를 권장합니다.", principle:"원칙 #3" };
+  if (above10 && holdings > 0)
+    return { level:"good", title:"추세 유지 중", body:`이격도 ${g.toFixed(1)}%. 10MA 위를 지키는 동안 보유를 유지하세요.`, principle:"원칙 #2" };
+  if (above10 && g <= 5)
+    return { level:"good", title:"초입 구간", body:`이격도 ${g.toFixed(1)}%. 손절선 짧고 수익 기대치 높은 이상적 진입 구간입니다.`, principle:"원칙 #3" };
+  if (!above10 && holdings === 0)
+    return { level:"info", title:"10MA 아래 — 관망", body:"상승 추세가 아닙니다. 10MA 돌파 확인 후 진입을 기다리세요.", principle:"원칙 #10" };
+  return { level:"info", title:`${turn + 1}턴 진행 중`, body:"차트를 분석하고 매수/매도/다음 턴을 선택하세요." };
+}
+
 export default function GameApp({ initialMarket, initialInterval, initialMission, initialCash = 10_000_000, onGameEnd, onBackToLobby }: GameAppProps) {
   const INIT_CASH = initialCash, MAX_TURNS = 50, EXCHANGE = 1350;
 
@@ -955,6 +1127,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const [showResult,   setShowResult]  = useState(false);
   const [diagOpen,     setDiagOpen]    = useState(false);
   const [lastGameAsset, setLastGameAsset] = useState<number>(INIT_CASH);
+  const [gameStats,     setGameStats]     = useState<GameStats>(() => loadStats());
   const modalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const WINDOW = 36;
@@ -1128,6 +1301,17 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   })();
 
   const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio, overheat10, upperTailSignal };
+  // 📈 N차 파동 감지 (chartCandles 기준)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const waveSegments = useMemo(() => detectWaves(chartCandles, chartMa10), [curIdx]);
+
+  // 💬 코치 메시지
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const coachMsg: CoachMsg = useMemo(() => getCoachMsg(
+    above10, goldenCross, deadCross, volMassiveSell,
+    nearMA10, overheat10, volDecreasing, gap10, holdings, turn
+  ), [curIdx, holdings, turn]);
+
 
   const buyableQty    = krwPrice > 0 ? Math.floor(cash / krwPrice) : 0;
   const buyablePctQty = (pct: number) => krwPrice > 0 ? Math.floor((totalAsset * pct / 100) / krwPrice) : 0;
@@ -1204,6 +1388,10 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 		const totalGained   = scoredLatest.reduce((s, t) => s + t.score, 0);
 		const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
 		setLastGameAsset(totalAsset);
+		// 📊 통계 저장
+		const _finalPnl = ((totalAsset / INIT_CASH) - 1) * 100;
+		const _updStats = appendGameToStats(_finalPnl, trades);
+		setGameStats(_updStats);
 		onGameEnd({
 		  trades,
 		  turnScores: latestScores,
@@ -1305,6 +1493,66 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={36} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
         </div>
       </div>
+
+      {/* 💬 실시간 코치 패널 */}
+      {(() => {
+        const bgMap  = { good:"#f0fdf4", warn:"#fff7ed", danger:"#fff5f5", info:"#f8f9ff" } as const;
+        const clrMap = { good:"#166534", warn:"#9a3412", danger:"#991b1b", info:"#3730a3" } as const;
+        const bdrMap = { good:"#bbf7d0", warn:"#fed7aa", danger:"#fca5a5", info:"#c7d2fe" } as const;
+        const icnMap = { good:"✅", warn:"⚠️", danger:"🚨", info:"💡" } as const;
+        const lv = coachMsg.level;
+        return (
+          <div style={{ padding: "4px 10px 0", flexShrink: 0 }}>
+            <div style={{ background: bgMap[lv], border: `1px solid ${bdrMap[lv]}`, borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span style={{ fontSize: 14, flexShrink: 0 }}>{icnMap[lv]}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: clrMap[lv] }}>{coachMsg.title}</span>
+                  {coachMsg.principle && (
+                    <span style={{ fontSize: 9, color: clrMap[lv], background: "rgba(255,255,255,0.6)", borderRadius: 4, padding: "1px 6px", flexShrink: 0 }}>
+                      {coachMsg.principle}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: clrMap[lv], opacity: 0.85, lineHeight: 1.4 }}>{coachMsg.body}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 📈 N차 파동 라벨 */}
+      {waveSegments.length > 1 && (() => {
+        const rises  = waveSegments.filter(w => w.type === "상승");
+        const curSeg = waveSegments[waveSegments.length - 1];
+        const labels = rises.slice(-3);
+        return (
+          <div style={{ padding: "3px 10px 0", flexShrink: 0 }}>
+            <div style={{ background: "#f8f9ff", border: "1px solid #e0e7ff", borderRadius: 10, padding: "6px 12px", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 10, color: "#4338ca", fontWeight: 700, flexShrink: 0 }}>📈 파동</span>
+              {labels.map(seg => {
+                const isCur = seg === curSeg;
+                const bg  = isCur ? "#4338ca" : "#e0e7ff";
+                const col = isCur ? "#fff"     : "#4338ca";
+                const bdr = isCur ? "none"     : "1px solid #c7d2fe";
+                return (
+                  <span key={seg.startIdx} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: bg, color: col, fontWeight: isCur ? 700 : 400, border: bdr, flexShrink: 0 }}>
+                    {seg.waveNum}차 상승{isCur ? " 진행중" : " ✓"}
+                  </span>
+                );
+              })}
+              {curSeg.type === "눌림" && (
+                <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "#fef9c3", color: "#854d0e", border: "1px solid #fde68a", fontWeight: 700, flexShrink: 0 }}>
+                  눌림목 구간
+                </span>
+              )}
+              {rises.length >= 3 && (
+                <span style={{ fontSize: 9, color: "#6366f1", marginLeft: "auto" }}>3차↑ 주의</span>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MA 상태 + 거래량 카드 (4개) */}
       <div style={{ padding: "4px 10px 0", display: "flex", gap: 5, flexShrink: 0 }}>
