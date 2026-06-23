@@ -1357,7 +1357,7 @@ function PrincipleSimulator({
         nc  = nc - cost;
         nac = (nac * nh + cost) / (nh + qty);
         nh  = nh + qty;
-        const gap10 = ma10 > 0 ? (price - ma10) / ma10 * 100 : 0;
+        const gap10 = (() => { const m = calcMAat(allCandles, idx, 10); return m && m > 0 ? (price - m) / m * 100 : 0; })();
         newTrade = { turn, type:"매수", price, qty, reason, gap10, avgCost: nac, holdings: nh };
         aColor = "#e03131";
       }
