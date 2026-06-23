@@ -397,18 +397,21 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 // 차트 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers }: {
+function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers, avgCostLines }: {
   candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[];
   width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string;
-  markers?: { idx:number; type:"매수"|"매도"; source?:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[]
+  markers?: { idx:number; type:"매수"|"매도"; source?:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[];
+  avgCostLines?: { price: number; source: "sim"|"mine"; label?: string }[];
 }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b, n = candles.length;
   const allP = candles.flatMap(c => [c.high, c.low]);
   const maV  = [...ma5, ...ma10, ...ma240].filter((v): v is number => v != null);
-  const minP = Math.min(...allP, ...maV) * 0.995;
-  const maxP = Math.max(...allP, ...maV) * 1.005;
+  // 평단선도 가격 범위에 포함
+  const costV = (avgCostLines ?? []).map(l => l.price).filter(p => p > 0);
+  const minP = Math.min(...allP, ...maV, ...costV) * 0.995;
+  const maxP = Math.max(...allP, ...maV, ...costV) * 1.005;
   const sx = (i: number) => PAD.l + (i / Math.max(n - 1, 1)) * W;
   const sy = (p: number) => PAD.t + H - ((p - minP) / (maxP - minP)) * H;
   const cw = Math.max(2, (W / n) * 0.7);
@@ -428,72 +431,78 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
         const cx    = sx(m.idx);
         const c     = candles[m.idx];
         const isBuy  = m.type === "매수";
-        const isSim  = m.source !== "mine";  // "sim" or undefined → 원칙
+        const isSim  = m.source !== "mine";
         const isMine = m.source === "mine";
+        const isLatest = m.idx === markers.filter(mk => mk.source === m.source).slice(-1)[0]?.idx;
 
-        // 색상: 원칙(진함) vs 내꺼(연함)
         const clr     = isBuy
-          ? (isSim ? "#e03131" : "#f97316")   // 매수: 빨강 vs 오렌지
-          : (isSim ? "#1971c2" : "#0c8599");  // 매도: 파랑 vs 청록
-        const bgClr   = isBuy
-          ? (isSim ? "rgba(255,245,245,0.95)" : "rgba(255,247,237,0.95)")
-          : (isSim ? "rgba(231,245,255,0.95)" : "rgba(224,249,255,0.95)");
+          ? (isSim ? "#e03131" : "#f97316")
+          : (isSim ? "#1971c2" : "#0c8599");
 
-        const bw = 220;
-        const bh = isBuy ? 36 : 32;
+        // 과거 마커는 투명도 낮춤
+        const opacity = isLatest ? 1 : 0.45;
 
-        // 위치 오프셋: 내꺼는 원칙보다 조금 더 멀리
         const simOff  = 18;
-        const mineOff = 36;
+        const mineOff = 34;
         const off = isMine ? mineOff : simOff;
 
-        const rawBoxY = isBuy ? sy(c.low) + off + 4 : sy(c.high) - bh - off - 4;
-        const boxY    = Math.min(Math.max(rawBoxY, PAD.t + 2), height - bh - PAD.b - 2);
         const markerY = isBuy ? sy(c.low) + off : sy(c.high) - off;
-
-        // 삼각형 polygon points (크기 7px)
-        const ts = 7;
+        const ts = 6;
         const buyPts  = `${cx},${markerY} ${cx-ts},${markerY+ts*1.5} ${cx+ts},${markerY+ts*1.5}`;
         const sellPts = `${cx},${markerY} ${cx-ts},${markerY-ts*1.5} ${cx+ts},${markerY-ts*1.5}`;
         const pts = isBuy ? buyPts : sellPts;
 
-        // 레이블 텍스트
-        const srcLabel = isSim ? "원칙" : "나";
-
         return (
-          <g key={mi}>
+          <g key={mi} opacity={opacity}>
             {/* 수직 점선 */}
             <line x1={cx} y1={sy(c.high) - 4} x2={cx} y2={sy(c.low) + 4}
-              stroke={clr} strokeWidth="1" strokeDasharray="3,2" strokeOpacity={isMine ? 0.35 : 0.5} />
-            {/* 삼각형: 원칙=채움, 내꺼=빈 테두리 */}
+              stroke={clr} strokeWidth="1" strokeDasharray="3,2" strokeOpacity="0.4" />
+            {/* 삼각형 */}
             {isSim
               ? <polygon points={pts} fill={clr} />
               : <polygon points={pts} fill="none" stroke={clr} strokeWidth="1.5" />
             }
-            {/* 정보 박스 */}
-            <rect x={cx + 4} y={boxY} width={bw} height={bh}
-              rx="5" fill={bgClr} stroke={clr} strokeWidth="1" strokeOpacity="0.7" />
-            {/* [원칙]/[나] 레이블 배지 */}
-            <rect x={cx + 6} y={boxY + 3} width={22} height={13}
-              rx="3" fill={clr} />
-            <text x={cx + 17} y={boxY + 13} fontSize="8" fill="#fff" textAnchor="middle" fontWeight="bold">
-              {srcLabel}
-            </text>
-            {/* 타이틀 */}
-            <text x={cx + 32} y={boxY + 13} fontSize="10" fill={clr} fontWeight="bold">
-              {isBuy ? "매수" : "매도"} {m.qty}주
-            </text>
-            {isBuy ? (
-              <text x={cx + 6} y={boxY + 27} fontSize="9" fill="#495057">
-                이격 {m.gap10 != null ? (m.gap10 >= 0 ? "+" : "") + m.gap10.toFixed(1) + "%" : "-"}
-                {"  "}평단 {m.avgCost != null ? Math.round(m.avgCost).toLocaleString() : (m.krwPrice != null ? Math.round(m.krwPrice).toLocaleString() : "-")}
-              </text>
-            ) : (
-              <text x={cx + 6} y={boxY + 26} fontSize="10"
-                fill={m.pnlPct != null && m.pnlPct >= 0 ? "#2f9e44" : "#e03131"} fontWeight="bold">
-                {m.pnlPct != null ? (m.pnlPct >= 0 ? "+" : "") + m.pnlPct.toFixed(1) + "%" : "-"}
-              </text>
-            )}
+            {/* 카드: 최신 턴만 표시 */}
+            {isLatest && (() => {
+              const bw = 150;
+              const bh = 20;
+              const bgClr = isBuy
+                ? (isSim ? "rgba(255,245,245,0.97)" : "rgba(255,247,237,0.97)")
+                : (isSim ? "rgba(231,245,255,0.97)" : "rgba(224,249,255,0.97)");
+              const rawBoxY = isBuy ? sy(c.low) + off + 6 : sy(c.high) - off - bh - 6;
+              const boxY   = Math.min(Math.max(rawBoxY, PAD.t + 2), height - bh - PAD.b - 2);
+              // 좌우 위치: 오른쪽 넘으면 왼쪽으로
+              const bx = (cx + bw + 55 > width) ? cx - bw - 4 : cx + 4;
+              const srcLabel = isSim ? "원칙" : "나";
+              return (
+                <>
+                  <rect x={bx} y={boxY} width={bw} height={bh}
+                    rx="4" fill={bgClr} stroke={clr} strokeWidth="0.8" strokeOpacity="0.8" />
+                  {/* 배지 */}
+                  <rect x={bx+2} y={boxY+3} width={isSim?20:14} height={14} rx="3" fill={clr} />
+                  <text x={bx+2+(isSim?10:7)} y={boxY+13} fontSize="8" fill="#fff" textAnchor="middle" fontWeight="bold">
+                    {srcLabel}
+                  </text>
+                  {/* 타입 */}
+                  <text x={bx+(isSim?25:19)} y={boxY+13} fontSize="9" fill={clr} fontWeight="bold">
+                    {isBuy ? "매수" : "매도"} {m.qty}주
+                  </text>
+                  {/* 이격도 (매수 시만) */}
+                  {isBuy && m.gap10 != null && (
+                    <text x={bx+85} y={boxY+13} fontSize="8" fill={clr} fontWeight="bold">
+                      {m.gap10 >= 0 ? "+" : ""}{m.gap10.toFixed(1)}%
+                    </text>
+                  )}
+                  {/* 매도 수익률 */}
+                  {!isBuy && m.pnlPct != null && (
+                    <text x={bx+85} y={boxY+13} fontSize="8"
+                      fill={m.pnlPct >= 0 ? "#2f9e44" : "#e03131"} fontWeight="bold">
+                      {m.pnlPct >= 0 ? "+" : ""}{m.pnlPct.toFixed(1)}%
+                    </text>
+                  )}
+                </>
+              );
+            })()}
           </g>
         );
       })}
@@ -503,6 +512,27 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
           <text x={PAD.l + W + 4} y={l.y + 4} fontSize="9" fill="#adb5bd">{l.label}</text>
         </g>
       ))}
+      {/* 평단 가로선 */}
+      {avgCostLines && avgCostLines.filter(l => l.price > 0 && l.price >= minP && l.price <= maxP).map((l, li) => {
+        const ly   = sy(l.price);
+        const clr  = l.source === "sim" ? "#e03131" : "#f97316";
+        const lbl  = l.label ?? (l.source === "sim" ? "원칙 평단" : "내 평단");
+        const pStr = Math.round(l.price).toLocaleString();
+        return (
+          <g key={li}>
+            <line x1={PAD.l} y1={ly} x2={PAD.l + W} y2={ly}
+              stroke={clr} strokeWidth="1.2" strokeDasharray="5,3" strokeOpacity="0.7" />
+            <rect x={PAD.l + W + 2} y={ly - 8} width={46} height={14} rx="3"
+              fill={clr} fillOpacity="0.12" />
+            <text x={PAD.l + W + 4} y={ly + 3} fontSize="8" fill={clr} fontWeight="bold">
+              {lbl}
+            </text>
+            <text x={PAD.l + W + 2} y={ly + 14} fontSize="7" fill={clr} fillOpacity="0.8">
+              {pStr}
+            </text>
+          </g>
+        );
+      })}
       {candles.map((c, i) => {
         const x = sx(i), up = c.close >= c.open, col = up ? "#e03131" : "#1971c2";
         const bT = sy(Math.max(c.open, c.close)), bH = Math.max(1, sy(Math.min(c.open, c.close)) - bT);
@@ -1383,7 +1413,29 @@ function PrincipleSimulator({
   // 합산 (원칙 먼저, 내꺼 나중 → 렌더 순서상 내꺼가 위)
   const markers = [...simMarkers, ...myMarkersArr];
 
-  const curPrice   = allCandles[absIdx]?.close ?? 0;
+  // 평단 가로선: 보유 중일 때만 표시
+  const avgCostLines = React.useMemo(() => {
+    const lines: { price: number; source: "sim"|"mine"; label?: string }[] = [];
+    // 원칙 평단
+    if (stateRef.current.holdings > 0 && stateRef.current.avgCost > 0) {
+      const simAvgKrw = stateRef.current.avgCost / exchRate;
+      lines.push({ price: simAvgKrw, source: "sim", label: "원칙평단" });
+    }
+    // 내 평단 계산
+    let myHold = 0, myAvg = 0;
+    myTrades.filter(t => t.turn <= simTurn).forEach(t => {
+      if (t.type === "매수") {
+        myAvg  = (myAvg * myHold + t.qty * t.krwPrice) / (myHold + t.qty);
+        myHold += t.qty;
+      } else {
+        myHold = 0; myAvg = 0;
+      }
+    });
+    if (myHold > 0 && myAvg > 0) {
+      lines.push({ price: myAvg, source: "mine", label: "내평단" });
+    }
+    return lines;
+  }, [simTurn, myTrades, exchRate]);
   const curKrw     = curPrice * exchRate;
   const totalAsset = stateRef.current.cash + stateRef.current.holdings * curKrw;
   const pnlPct     = (totalAsset / initCash - 1) * 100;
@@ -1562,6 +1614,7 @@ function PrincipleSimulator({
           svgHeight="100%"
           style={{ height:"100%" }}
           markers={markers}
+          avgCostLines={avgCostLines}
         />
       </div>
 
@@ -1816,10 +1869,12 @@ function PrincipleSimulator({
       {/* 완료 비교 오버레이 */}
       {done && (
         <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:10 }}>
-          <div style={{ background:"#fff", borderRadius:16, padding:"20px", width:"min(360px,90vw)", maxHeight:"80vh", overflowY:"auto" }}>
-            <div style={{ textAlign:"center", marginBottom:14 }}>
-              <div style={{ fontSize:14, fontWeight:700, color:C2.text, marginBottom:8 }}>📊 시뮬레이션 완료</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          <div style={{ background:"#fff", borderRadius:16, width:"min(360px,90vw)", maxHeight:"88vh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
+            {/* 고정 헤더 */}
+            <div style={{ padding:"16px 20px 12px", flexShrink:0 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:C2.text, marginBottom:10, textAlign:"center" }}>📊 시뮬레이션 완료</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10 }}>
                 <div style={{ background:"#f8f9fa", borderRadius:10, padding:"12px", border:"1px solid #e9ecef" }}>
                   <div style={{ fontSize:10, color:C2.muted, marginBottom:3 }}>내 플레이</div>
                   <div style={{ fontSize:22, fontWeight:800, color: myPnl>=0?C2.red:C2.blue }}>{fmtPct(myPnl)}</div>
@@ -1831,20 +1886,19 @@ function PrincipleSimulator({
                   <div style={{ fontSize:10, color:C2.sub, marginTop:2 }}>{fmtKRW(Math.round(totalAsset))}</div>
                 </div>
               </div>
-              {/* 차이 */}
-              <div style={{ marginTop:10, padding:"8px 12px", background: diff>=0?"#f0fdf4":"#fff7ed", borderRadius:8, border:`1px solid ${diff>=0?"#bbf7d0":"#fed7aa"}` }}>
+              <div style={{ padding:"8px 12px", background: diff>=0?"#f0fdf4":"#fff7ed", borderRadius:8, border:`1px solid ${diff>=0?"#bbf7d0":"#fed7aa"}`, textAlign:"center" }}>
                 <span style={{ fontSize:13, fontWeight:800, color: diff>=0?C2.green:"#e65100" }}>
                   {diff>=0 ? `원칙대로 했다면 ${diff.toFixed(1)}%p 더 벌었습니다` : `이번엔 내 판단이 ${Math.abs(diff).toFixed(1)}%p 앞섰습니다 🎉`}
                 </span>
               </div>
             </div>
 
-            {/* 원칙 매매 내역 */}
-            <div style={{ marginBottom:12 }}>
+            {/* 스크롤 가능한 매매 내역 */}
+            <div style={{ flex:1, overflowY:"auto", padding:"0 20px" }}>
               <div style={{ fontSize:12, fontWeight:700, color:C2.text, marginBottom:6 }}>원칙 매매 내역 ({simTrades.length}건)</div>
               {simTrades.length === 0
                 ? <div style={{ fontSize:12, color:C2.muted, textAlign:"center", padding:"10px 0" }}>매매 없음 (조건 미충족)</div>
-                : <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                : <div style={{ display:"flex", flexDirection:"column", gap:5, paddingBottom:8 }}>
                     {simTrades.map((t,i) => (
                       <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 10px", borderRadius:8, background: t.type==="매수"?"#fff5f5":"#e7f5ff", border:`1px solid ${t.type==="매수"?"#fca5a5":"#74c0fc"}`, fontSize:11 }}>
                         <span style={{ fontWeight:700, color: t.type==="매수"?C2.red:C2.blue, width:36 }}>{t.type}</span>
@@ -1861,8 +1915,9 @@ function PrincipleSimulator({
               }
             </div>
 
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={()=>{ setDone(false); setSimTurn(0); setCash(initCash); setHoldings(0); setAvgCost(0); setSimTrades([]); stateRef.current={cash:initCash,holdings:0,avgCost:0,trades:[]}; processTurn(0); }}
+            {/* 고정 하단 버튼 */}
+            <div style={{ padding:"12px 20px 16px", flexShrink:0, borderTop:"1px solid #e9ecef", display:"flex", gap:8 }}>
+              <button onClick={()=>{ setDone(false); setSimTurn(0); setCash(initCash); setHoldings(0); setAvgCost(0); setSimTrades([]); setSimPnlHist([0]); stateRef.current={cash:initCash,holdings:0,avgCost:0,trades:[]}; processTurn(0); }}
                 style={{ flex:1, padding:"11px", borderRadius:10, border:"1.5px solid #dee2e6", background:"#fff", color:C2.text, fontSize:13, cursor:"pointer", fontWeight:600, fontFamily:"inherit" }}>
                 🔁 다시 보기
               </button>
