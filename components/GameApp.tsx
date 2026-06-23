@@ -1601,18 +1601,19 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       )}
 
       {/* 헤더 */}
-      <div style={{ background: C.bg, borderBottom: `1px solid ${C.border}`, padding: "5px 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <button onClick={onBackToLobby} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: "2px 6px", fontFamily: "inherit" }}>← 로비</button>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>차트게임 {isQQQ ? "🇺🇸" : "🇰🇷"}</span>
-          <span style={{ fontSize: 10, color: C.muted, background: C.surface, padding: "2px 7px", borderRadius: 5, border: `1px solid ${C.border}` }}>{market}</span>
-          <span style={{ fontSize: 10, color: C.accent, background: "#f3f0ff", padding: "2px 7px", borderRadius: 5, border: "1px solid #d0bfff" }}>{intervalLabel}</span>
-          {mission && <span style={{ fontSize: 10, color: C.green, background: "#f0fdf4", padding: "2px 7px", borderRadius: 5, border: "1px solid #bbf7d0" }}>{MISSIONS.find(m => m.id === mission)?.icon} {MISSIONS.find(m => m.id === mission)?.title}</span>}
-          <span style={{ fontSize: 10, color: C.sub, background: C.surface, padding: "2px 8px", borderRadius: 5, border: `1px solid ${C.border}` }}>📅 {fmtDate(curDate)}</span>
+      <div style={{ background: C.bg, borderBottom: `1px solid ${C.border}`, padding: "4px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, minWidth: 0 }}>
+        {/* 좌측: 로비 + 시장/봉 배지만 (개행 방지) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
+          <button onClick={onBackToLobby} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: "2px 4px", fontFamily: "inherit", flexShrink: 0, whiteSpace: "nowrap" }}>← 로비</button>
+          <span style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", flexShrink: 0 }}>차트게임 {isQQQ ? "🇺🇸" : "🇰🇷"}</span>
+          <span style={{ fontSize: 10, color: C.muted, background: C.surface, padding: "2px 6px", borderRadius: 5, border: `1px solid ${C.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>{market}</span>
+          <span style={{ fontSize: 10, color: C.accent, background: "#f3f0ff", padding: "2px 6px", borderRadius: 5, border: "1px solid #d0bfff", flexShrink: 0, whiteSpace: "nowrap" }}>{intervalLabel}</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: C.sub }}>턴 <b>{turn + 1}</b>/{MAX_TURNS}</span>
-          <div style={{ width: 72, height: 4, background: C.border, borderRadius: 2 }}>
+        {/* 우측: 날짜 + 턴 + 진행바 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap" }}>{fmtDate(curDate)}</span>
+          <span style={{ fontSize: 11, color: C.sub, whiteSpace: "nowrap" }}>턴 <b>{turn + 1}</b>/{MAX_TURNS}</span>
+          <div style={{ width: 52, height: 4, background: C.border, borderRadius: 2, flexShrink: 0 }}>
             <div style={{ width: `${((turn + 1) / MAX_TURNS) * 100}%`, height: "100%", background: C.accent, borderRadius: 2, transition: "width .3s" }} />
           </div>
         </div>
@@ -1657,7 +1658,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       </div>
 
       {/* 하단 고정 영역: 코치 + 파동 + MA카드 + 매매패널 */}
-      <div style={{ flexShrink: 0, overflowY: "auto", maxHeight: "52vh" }}>
+      <div style={{ flexShrink: 0 }}>
       {(() => {
         const bgMap  = { good:"#f0fdf4", warn:"#fff7ed", danger:"#fff5f5", info:"#f8f9ff" } as const;
         const clrMap = { good:"#166534", warn:"#9a3412", danger:"#991b1b", info:"#3730a3" } as const;
@@ -1677,7 +1678,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: clrMap[lv], opacity: 0.85, lineHeight: 1.4 }}>{coachMsg.body}</div>
+                <div style={{ fontSize: 10, color: clrMap[lv], opacity: 0.85, lineHeight: 1.3 }}>{coachMsg.body}</div>
               </div>
             </div>
           </div>
@@ -1718,17 +1719,17 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       })()}
 
       {/* MA 상태 + 거래량 카드 (4개) */}
-      <div style={{ padding: "4px 10px 0", display: "flex", gap: 5, flexShrink: 0 }}>
+      <div style={{ padding: "3px 10px 0", display: "flex", gap: 4, flexShrink: 0 }}>
         {([{ label:"5MA", st: maStatus5, col:"#7048e8", gap: gap5 }, { label:"10MA", st: maStatus10, col:"#f97316", gap: gap10 }, { label:"240MA", st: maStatus240, col:"#adb5bd", gap: gap240 }]).map(({ label, st, col, gap }) => {
           const isOver10 = label === "10MA" && overheat10;
           const fmtGap = (g: number | null) => g === null ? "—" : (g >= 0 ? "+" : "") + g.toFixed(1) + "%";
           const gapColor = gap === null ? C.muted : gap > 0 ? "#e03131" : "#1971c2";
           return (
-            <div key={label} style={{ flex: 1, height: 52, borderRadius: 9, border: `1px solid ${isOver10 ? "#fb923c44" : (st ? st.color + "44" : C.border)}`, background: isOver10 ? "#fff7ed" : (st ? st.bg : C.surface), padding: "6px 8px", overflow: "hidden" }}>
+            <div key={label} style={{ flex: 1, borderRadius: 9, border: `1px solid ${isOver10 ? "#fb923c44" : (st ? st.color + "44" : C.border)}`, background: isOver10 ? "#fff7ed" : (st ? st.bg : C.surface), padding: "5px 7px" }}>
               <div style={{ fontSize: 9, color: col, fontWeight: 700, marginBottom: 2 }}>{label}</div>
               <div style={{ fontSize: (st as {bold?:boolean})?.bold ? 12 : 11, fontWeight: (st as {bold?:boolean})?.bold ? 800 : 600, color: st?.color ?? C.muted }}>{st?.status ?? "—"}</div>
               <div style={{ fontSize: 10, color: gapColor, marginTop: 1, fontWeight: 600 }}>이격 {fmtGap(gap)}</div>
-              {isOver10 && <div style={{ fontSize: 8, color: "#c2410c", marginTop: 1, fontWeight: 700 }}>⚠️ 과열주의</div>}
+              {isOver10 && <div style={{ fontSize: 7, color: "#c2410c", marginTop: 0, fontWeight: 700 }}>⚠️ 과열주의</div>}
             </div>
           );
         })}
@@ -1744,10 +1745,10 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             ? { label: "거래량 수축", color: "#7048e8", bg: "#f3f0ff", icon: "💤", sub: "방향 확인 대기" }
             : { label: "거래량 보통", color: "#868e96", bg: "#f8f9fa", icon: "➡️", sub: "특이 신호 없음" };
           return (
-            <div style={{ flex: 1, height: 52, borderRadius: 9, border: `1px solid ${volState.color}44`, background: volState.bg, padding: "6px 8px", overflow: "hidden" }}>
+            <div style={{ flex: 1, borderRadius: 9, border: `1px solid ${volState.color}44`, background: volState.bg, padding: "5px 7px" }}>
               <div style={{ fontSize: 9, color: volState.color, fontWeight: 700, marginBottom: 2 }}>거래량</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: volState.color }}>{volState.icon} {volState.label}</div>
-              <div style={{ fontSize: 9, color: volState.color, marginTop: 1, opacity: 0.8 }}>{volState.sub}</div>
+              <div style={{ fontSize: 8, color: volState.color, marginTop: 0, opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{volState.sub}</div>
             </div>
           );
         })()}
@@ -1962,8 +1963,8 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       )}
 
       {/* 매매 패널 */}
-      <div style={{ padding: "4px 10px 10px", flexShrink: 0 }}>
-        <div style={{ background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, padding: "12px 14px" }}>
+      <div style={{ padding: "3px 10px 6px", flexShrink: 0 }}>
+        <div style={{ background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`, padding: "8px 12px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, padding: "6px 10px", background: C.bg, borderRadius: 8, border: `1px solid ${C.border}` }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
