@@ -1475,9 +1475,9 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         <div style={{ flexShrink: 0 }}><div style={{ fontSize: 8, color: C.muted }}>평가손익</div><div style={{ fontSize: 11, fontWeight: 700, color: holdPnlPct >= 0 ? C.red : C.blue }}>{avgCostKRW > 0 ? fmtPct(holdPnlPct) : "—"}</div></div>
       </div>
 
-      {/* 차트 */}
-      <div style={{ padding: "4px 10px 0", flexShrink: 0 }}>
-        <div style={{ background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+      {/* 차트 — 남은 공간 탄력적으로 채움 */}
+      <div style={{ flex: 1, minHeight: 0, padding: "4px 10px 0", overflow: "hidden" }}>
+        <div style={{ background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden", height: "100%", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "4px 10px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
               <span key={l} style={{ fontSize: 9, color: col, display: "flex", alignItems: "center", gap: 2 }}>
@@ -1489,12 +1489,13 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} svgHeight="min(calc(100dvh - 530px), 360px)" />
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={36} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
         </div>
       </div>
 
-      {/* 💬 실시간 코치 패널 */}
+      {/* 하단 고정 영역: 코치 + 파동 + MA카드 + 매매패널 */}
+      <div style={{ flexShrink: 0, overflowY: "auto", maxHeight: "52vh" }}>
       {(() => {
         const bgMap  = { good:"#f0fdf4", warn:"#fff7ed", danger:"#fff5f5", info:"#f8f9ff" } as const;
         const clrMap = { good:"#166534", warn:"#9a3412", danger:"#991b1b", info:"#3730a3" } as const;
@@ -1905,6 +1906,8 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             <button onClick={nextTurn} style={{ padding: "13px 0", borderRadius: 10, border: `1.5px solid ${C.border2}`, background: turn >= MAX_TURNS - 1 ? C.text : C.bg, color: turn >= MAX_TURNS - 1 ? "#fff" : C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{turn >= MAX_TURNS - 1 ? "결과 보기" : "▶ 다음 턴"}</button>
           </div>
         </div>
+      </div>
+      {/* /하단 고정 영역 */}
       </div>
     </div>
   );
