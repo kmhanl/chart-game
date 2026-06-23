@@ -1510,25 +1510,32 @@ function PrincipleSimulator({
     setLastAction({ action: bannerTitle, reason: bannerSub, color: aColor });
 
     // 2번: 핵심 학습 구간 감지 → 자동 일시정지
+    // 골든크로스/데드크로스/매매 발생 시만 감지 (관망은 제외)
     const ma5v   = calcMAat(allCandles, gameStart + turn, 5);
     const ma10v  = calcMAat(allCandles, gameStart + turn, 10);
     const pma5v  = calcMAat(allCandles, gameStart + turn - 1, 5);
     const pma10v = calcMAat(allCandles, gameStart + turn - 1, 10);
-    const isGolden = ma5v && ma10v && pma5v && pma10v && pma5v < pma10v && ma5v >= ma10v;
-    const isDead   = ma5v && ma10v && pma5v && pma10v && pma5v > pma10v && ma5v <= ma10v;
-    const isDetach = ma10v && allCandles[gameStart + turn] && Math.abs((allCandles[gameStart+turn].close - ma10v) / ma10v * 100) > 10;
-
-    if (isGolden || isDead || (action !== "관망" && turn > 0)) {
-      const title = isGolden ? "골든크로스 발생" : isDead ? "데드크로스 발생" : action === "매수" ? "매수 신호 감지" : "매도 신호 감지";
+    const isGolden = !!(ma5v && ma10v && pma5v && pma10v && pma5v < pma10v && ma5v >= ma10v);
+    const isDead   = !!(ma5v && ma10v && pma5v && pma10v && pma5v > pma10v && ma5v <= ma10v);
+    // 관망인 경우 핵심 구간 팝업 표시 안 함
+    const shouldHighlight = isGolden || isDead || (action !== "관망" && !!newTrade);
+    if (shouldHighlight) {
+      const title = isGolden ? "골든크로스 발생"
+                  : isDead   ? "데드크로스 발생"
+                  : action === "매수" ? "매수 신호 감지" : "매도 신호 감지";
       const desc  = isGolden ? "5MA가 10MA를 상향 돌파 — 원칙 #12 진입 타이밍"
                   : isDead   ? "5MA가 10MA를 하향 돌파 — 원칙 #7 손절 타이밍"
                   : reason;
-      // 이후 3봉 수익률 추산
-      const futureIdx = Math.min(gameStart + turn + 3, allCandles.length - 1);
+      const futureIdx   = Math.min(gameStart + turn + 3, allCandles.length - 1);
       const futurePrice = allCandles[futureIdx]?.close ?? allCandles[gameStart + turn].close;
-      const afterPct = (futurePrice / allCandles[gameStart + turn].close - 1) * 100;
+      const afterPct    = (futurePrice / allCandles[gameStart + turn].close - 1) * 100;
+      // 내 판단: 해당 턴에 실제로 내가 한 행동
+      // (processTurn 시점엔 myTrades가 클로저 밖이므로 "관망"으로 기본 표시, 배너에서 보정)
       setHighlightInfo({ title, desc, simAct: action, myAct: "관망", afterPct });
-      setHlCollapsed(false);  // 새 핵심 구간 등장 시 자동 펼침
+      setHlCollapsed(false);
+    } else {
+      // 관망 턴에선 이전 핵심 구간 팝업 닫기 (턴이 넘어갔으므로)
+      setHighlightInfo(null);
     }
   }, [allCandles, gameStart, initCash, isQQQ, exchRate]);
 
