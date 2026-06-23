@@ -431,8 +431,8 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
         const clr   = isBuy ? "#e03131" : "#1971c2";
         const bgClr = isBuy ? "rgba(255,245,245,0.95)" : "rgba(231,245,255,0.95)";
 
-        const bw = 112;  // 박스 너비
-        const bh = isBuy ? 50 : 38;  // 박스 높이
+        const bw = 220;  // 박스 너비
+        const bh = isBuy ? 52 : 40;  // 박스 높이
 
         // 수평 위치: 오른쪽 넘으면 왼쪽으로
         const bx = (cx + bw + 55 > width) ? cx - bw - 4 : cx + 4;
@@ -1215,7 +1215,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
         <PrincipleSimulator
           allCandles={allCandles} gameStart={gameStart}
           initCash={initCash} isQQQ={isQQQProp}
-          myTotalAsset={totalAsset} myPnl={pnl}
+          myTotalAsset={totalAsset} myPnl={pnl} myTrades={trades}
           onClose={() => setShowSim(false)}
           fmtKRW={fmtKRW} fmtPct={fmtPct} fmtDate={fmtDate}
           market={market} stockMeta={stockMeta} interval={interval}
@@ -1287,11 +1287,11 @@ function decidePrinciple(
 }
 
 function PrincipleSimulator({
-  allCandles, gameStart, initCash, isQQQ, myTotalAsset, myPnl,
+  allCandles, gameStart, initCash, isQQQ, myTotalAsset, myPnl, myTrades,
   onClose, fmtKRW, fmtPct, fmtDate, market, stockMeta, interval,
 }: {
   allCandles: Candle[]; gameStart: number; initCash: number; isQQQ: boolean;
-  myTotalAsset: number; myPnl: number; onClose: () => void;
+  myTotalAsset: number; myPnl: number; myTrades: Trade[]; onClose: () => void;
   fmtKRW: (n:number)=>string; fmtPct: (n:number)=>string;
   fmtDate: (d:Date|undefined)=>string;
   market: string; stockMeta: StockMeta|null; interval: string;
@@ -1301,13 +1301,17 @@ function PrincipleSimulator({
 
   const [simTurn,    setSimTurn]    = React.useState(0);
   const [playing,    setPlaying]    = React.useState(true);
-  const [speed,      setSpeed]      = React.useState(1);   // 1 | 2 | 3
+  const [speed,      setSpeed]      = React.useState(1);
   const [done,       setDone]       = React.useState(false);
   const [cash,       setCash]       = React.useState(initCash);
   const [holdings,   setHoldings]   = React.useState(0);
   const [avgCost,    setAvgCost]    = React.useState(0);
   const [simTrades,  setSimTrades]  = React.useState<SimTrade[]>([]);
-  const [lastAction, setLastAction] = React.useState<{ action:string; reason:string; color:string } | null>(null);
+  const [lastAction, setLastAction] = React.useState<{ action:string; reason:string; color:string; simAct?:string; myAct?:string; afterResult?:string } | null>(null);
+  // 1번: 수익 곡선 히스토리
+  const [simPnlHist, setSimPnlHist] = React.useState<number[]>([0]);
+  // 2번: 핵심 학습 구간 팝업
+  const [highlightInfo, setHighlightInfo] = React.useState<{ title:string; desc:string; simAct:string; myAct:string; afterPct?:number } | null>(null);
   const intervalRef = React.useRef<ReturnType<typeof setInterval>|null>(null);
 
   // 내부 ref — interval에서 최신 state 참조
@@ -1381,6 +1385,14 @@ function PrincipleSimulator({
     setAvgCost(nac);
     if (newTrade) setSimTrades(prev => [...prev, newTrade!]);
 
+    // 1번: 수익 곡선 히스토리 업데이트
+    const curKrw2 = allCandles[gameStart + turn]?.close * exchRate ?? 0;
+    const curAsset = nc + nh * curKrw2;
+    setSimPnlHist(prev => [...prev, (curAsset / initCash - 1) * 100]);
+
+    // 내 판단 확인 (같은 턴에 내가 한 행동)
+    const myTradeThisTurn = stateRef.current.trades; // 비교용 — props myTrades에서 직접 참조
+
     // 배너 상세 메시지
     let bannerTitle = "";
     let bannerSub   = "";
@@ -1399,6 +1411,27 @@ function PrincipleSimulator({
       bannerSub   = `${newTrade.qty}주 · 수익률 ${pp >= 0 ? "+" : ""}${pp.toFixed(1)}% · ${pp >= 0 ? "+" : ""}${fmtKRW(Math.round(newTrade.pnlKrw ?? 0))}`;
     }
     setLastAction({ action: bannerTitle, reason: bannerSub, color: aColor });
+
+    // 2번: 핵심 학습 구간 감지 → 자동 일시정지
+    const ma5v   = calcMAat(allCandles, gameStart + turn, 5);
+    const ma10v  = calcMAat(allCandles, gameStart + turn, 10);
+    const pma5v  = calcMAat(allCandles, gameStart + turn - 1, 5);
+    const pma10v = calcMAat(allCandles, gameStart + turn - 1, 10);
+    const isGolden = ma5v && ma10v && pma5v && pma10v && pma5v < pma10v && ma5v >= ma10v;
+    const isDead   = ma5v && ma10v && pma5v && pma10v && pma5v > pma10v && ma5v <= ma10v;
+    const isDetach = ma10v && allCandles[gameStart + turn] && Math.abs((allCandles[gameStart+turn].close - ma10v) / ma10v * 100) > 10;
+
+    if (isGolden || isDead || (action !== "관망" && turn > 0)) {
+      const title = isGolden ? "골든크로스 발생" : isDead ? "데드크로스 발생" : action === "매수" ? "매수 신호 감지" : "매도 신호 감지";
+      const desc  = isGolden ? "5MA가 10MA를 상향 돌파 — 원칙 #12 진입 타이밍"
+                  : isDead   ? "5MA가 10MA를 하향 돌파 — 원칙 #7 손절 타이밍"
+                  : reason;
+      // 이후 3봉 수익률 추산
+      const futureIdx = Math.min(gameStart + turn + 3, allCandles.length - 1);
+      const futurePrice = allCandles[futureIdx]?.close ?? allCandles[gameStart + turn].close;
+      const afterPct = (futurePrice / allCandles[gameStart + turn].close - 1) * 100;
+      setHighlightInfo({ title, desc, simAct: action, myAct: "관망", afterPct });
+    }
   }, [allCandles, gameStart, initCash, isQQQ, exchRate]);
 
   // 재생 루프
@@ -1426,6 +1459,30 @@ function PrincipleSimulator({
   const simFinalPnl = (totalAsset / initCash - 1) * 100;
   const diff        = simFinalPnl - myPnl;
 
+  // 내 수익 곡선 사전 계산 (myTrades 기반)
+  const myPnlHist = React.useMemo(() => {
+    const hist: number[] = [];
+    let myCash = initCash, myHold = 0, myAvg = 0;
+    for (let t = 0; t < MAX_TURNS; t++) {
+      const idx2 = gameStart + t;
+      if (idx2 >= allCandles.length) break;
+      const price2 = allCandles[idx2].close * exchRate;
+      // 해당 턴 내 매매 반영
+      myTrades.filter(tr => tr.turn === t).forEach(tr => {
+        if (tr.type === "매수") {
+          const cost = tr.qty * tr.krwPrice;
+          myAvg  = (myAvg * myHold + cost) / (myHold + tr.qty);
+          myHold += tr.qty; myCash -= cost;
+        } else {
+          myCash += tr.qty * price2; myHold = 0; myAvg = 0;
+        }
+      });
+      const asset = myCash + myHold * price2;
+      hist.push((asset / initCash - 1) * 100);
+    }
+    return hist;
+  }, [myTrades, allCandles, gameStart, initCash, exchRate]);
+
   const C2 = { bg:"#fff", border:"#e9ecef", text:"#212529", sub:"#495057", muted:"#adb5bd", accent:"#7048e8", red:"#e03131", blue:"#1971c2", green:"#2f9e44", surface:"#f8f9fa" };
 
   return (
@@ -1449,84 +1506,6 @@ function PrincipleSimulator({
         </button>
       </div>
 
-      {/* 네비게이션 바 */}
-      <div style={{ background:"#1a1a1a", padding:"4px 10px", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-        {/* 이전 카드 */}
-        <button onClick={() => {
-          setPlaying(false);
-          const prevTrade = [...simTrades].reverse().find(t => t.turn < simTurn);
-          if (prevTrade) {
-            const target = prevTrade.turn;
-            // 해당 턴까지 상태 재계산
-            const s = { cash: initCash, holdings: 0, avgCost: 0, trades: [] as SimTrade[] };
-            for (let i = 0; i <= target; i++) {
-              const idx2 = gameStart + i;
-              if (idx2 >= allCandles.length) break;
-              const price2  = allCandles[idx2].close;
-              const krwP2   = price2 * exchRate;
-              const ma102   = calcMAat(allCandles, idx2, 10);
-              const { action: a2, reason: r2, ratio: rt2 } = decidePrinciple(allCandles, idx2, s.holdings, s.cash, initCash, isQQQ);
-              if (a2 === "매수" && rt2 > 0) {
-                const qty2 = Math.max(1, Math.floor(initCash * rt2 / krwP2));
-                const cost2 = qty2 * krwP2;
-                if (cost2 <= s.cash) {
-                  s.avgCost = (s.avgCost * s.holdings + cost2) / (s.holdings + qty2);
-                  s.holdings += qty2; s.cash -= cost2;
-                  const g2 = ma102 && ma102 > 0 ? (price2 - ma102) / ma102 * 100 : 0;
-                  s.trades.push({ turn:i, type:"매수", price:price2, qty:qty2, reason:r2, gap10:g2, avgCost:s.avgCost });
-                }
-              } else if (a2 === "매도" && s.holdings > 0) {
-                const pnl2 = (krwP2 - s.avgCost) * s.holdings;
-                const pp2  = s.avgCost > 0 ? (krwP2 - s.avgCost) / s.avgCost * 100 : 0;
-                s.trades.push({ turn:i, type:"매도", price:price2, qty:s.holdings, reason:r2, pnlKrw:pnl2, pnlPct:pp2 });
-                s.cash += s.holdings * krwP2; s.holdings = 0; s.avgCost = 0;
-              }
-            }
-            stateRef.current = s;
-            setCash(s.cash); setHoldings(s.holdings); setAvgCost(s.avgCost);
-            setSimTrades(s.trades);
-            setSimTurn(target);
-          }
-        }} disabled={simTrades.length === 0 || simTrades[0].turn >= simTurn}
-          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: simTrades.length === 0 || simTrades[0].turn >= simTurn ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>◀◀ 이전 매매</button>
-
-        {/* 1턴 뒤로 */}
-        <button onClick={() => { setPlaying(false); if (simTurn > 0) setSimTurn(t => t - 1); }}
-          disabled={simTurn <= 0}
-          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: simTurn <= 0 ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>◀ 1턴</button>
-
-        <div style={{ flex:1, textAlign:"center", fontSize:11, color:"#888" }}>
-          {simTurn+1} / {MAX_TURNS}턴
-          {simTrades.length > 0 && <span style={{ color:"#adb5bd", marginLeft:6 }}>매매 {simTrades.length}건</span>}
-        </div>
-
-        {/* 1턴 앞으로 */}
-        <button onClick={() => {
-          setPlaying(false);
-          if (simTurn < MAX_TURNS - 1) {
-            const next = simTurn + 1;
-            processTurn(next);
-            if (next >= MAX_TURNS - 1) { setDone(true); }
-            setSimTurn(next);
-          }
-        }} disabled={simTurn >= MAX_TURNS - 1}
-          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: simTurn >= MAX_TURNS - 1 ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>1턴 ▶</button>
-
-        {/* 다음 카드 */}
-        <button onClick={() => {
-          setPlaying(false);
-          const nextTrade = simTrades.find(t => t.turn > simTurn);
-          if (nextTrade) {
-            const target = nextTrade.turn;
-            for (let i = simTurn + 1; i <= target; i++) {
-              processTurn(i);
-            }
-            setSimTurn(target);
-          }
-        }} disabled={!simTrades.find(t => t.turn > simTurn)}
-          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: !simTrades.find(t => t.turn > simTurn) ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>다음 매매 ▶▶</button>
-      </div>
-
       {/* 진행 바 */}
       <div style={{ height:3, background:"#222", flexShrink:0 }}>
         <div style={{ width:`${(simTurn+1)/MAX_TURNS*100}%`, height:"100%", background:C2.accent, transition:"width .2s" }} />
@@ -1542,19 +1521,128 @@ function PrincipleSimulator({
         />
       </div>
 
-      {/* 이번 턴 판단 배너 */}
-      {lastAction && (
-        <div style={{ flexShrink:0, padding:"6px 12px", background: lastAction.color === "#e03131" ? "#fff5f5" : lastAction.color === "#1971c2" ? "#e7f5ff" : "#f8f9fa", borderTop:"1px solid #e9ecef" }}>
-          <div style={{ fontSize:12, fontWeight:700, color:lastAction.color }}>{lastAction.action}</div>
-          {lastAction.reason && (
-            <div style={{ fontSize:10, color:"#495057", marginTop:2, lineHeight:1.4 }}>{lastAction.reason}</div>
+      {/* 2번: 핵심 학습 구간 팝업 */}
+      {highlightInfo && !playing && (
+        <div style={{ flexShrink:0, background:"#f3f0ff", borderTop:"2px solid #7048e8", padding:"10px 12px" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <span style={{ fontSize:14 }}>📍</span>
+              <span style={{ fontSize:12, fontWeight:700, color:"#3c3489" }}>핵심 구간 — {highlightInfo.title}</span>
+            </div>
+            <span style={{ fontSize:9, color:"#534ab7", background:"#EEEDFE", padding:"2px 6px", borderRadius:99 }}>턴 {simTurn+1}</span>
+          </div>
+          <div style={{ background:"#fff", border:"1px solid #afa9ec", borderRadius:8, padding:"8px 10px", marginBottom:8, fontSize:11, color:"#534ab7" }}>
+            {highlightInfo.desc}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:8 }}>
+            <div style={{ background:"#fff5f5", borderRadius:6, padding:"6px 8px", border:"1px solid #fca5a5" }}>
+              <div style={{ fontSize:9, color:"#a32d2d", marginBottom:2 }}>나의 판단</div>
+              <div style={{ fontSize:12, fontWeight:700, color:"#a32d2d" }}>{highlightInfo.myAct}</div>
+            </div>
+            <div style={{ background:"#f0fdf4", borderRadius:6, padding:"6px 8px", border:"1px solid #86efac" }}>
+              <div style={{ fontSize:9, color:"#3b6d11", marginBottom:2 }}>원칙 판단</div>
+              <div style={{ fontSize:12, fontWeight:700, color:"#3b6d11" }}>
+                {highlightInfo.simAct === "매수" ? "▲ 매수" : highlightInfo.simAct === "매도" ? "▼ 매도" : "👀 관망"}
+              </div>
+            </div>
+          </div>
+          {highlightInfo.afterPct !== undefined && (
+            <div style={{ fontSize:11, color: highlightInfo.afterPct >= 0 ? "#3b6d11" : "#991b1b", background: highlightInfo.afterPct >= 0 ? "#f0fdf4" : "#fff5f5", borderRadius:6, padding:"5px 10px", marginBottom:8, border:`1px solid ${highlightInfo.afterPct >= 0 ? "#86efac" : "#fca5a5"}` }}>
+              이후 3봉 {highlightInfo.afterPct >= 0 ? "+" : ""}{highlightInfo.afterPct.toFixed(1)}% 변동
+            </div>
           )}
-          <div style={{ fontSize:10, color:C2.sub, marginTop:1 }}>턴 {simTurn+1}/{MAX_TURNS} · {allCandles[absIdx] ? fmtDate(new Date(allCandles[absIdx].date)) : ""}</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+            <button onClick={() => setHighlightInfo(null)}
+              style={{ padding:"7px", borderRadius:7, border:"1px solid #afa9ec", background:"#fff", color:"#534ab7", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>닫기</button>
+            <button onClick={() => { setHighlightInfo(null); setPlaying(true); }}
+              style={{ padding:"7px", borderRadius:7, border:"none", background:"#7048e8", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>계속 재생 ▶</button>
+          </div>
         </div>
       )}
 
+      {/* 1번: 내 판단 vs 원칙 비교 배너 */}
+      {lastAction && (() => {
+        const myTradeThisTurn = myTrades.find(t => t.turn === simTurn);
+        const myActLabel = myTradeThisTurn ? (myTradeThisTurn.type === "매수" ? `▲ ${myTradeThisTurn.type}` : `▼ ${myTradeThisTurn.type}`) : "👀 관망";
+        const simActLabel = lastAction.action;
+        const isDiff = (myTradeThisTurn?.type ?? "관망") !== (lastAction.color === "#e03131" ? "매수" : lastAction.color === "#1971c2" ? "매도" : "관망");
+        const simBg  = lastAction.color === "#e03131" ? "#fff5f5" : lastAction.color === "#1971c2" ? "#e7f5ff" : "#f8f9fa";
+        const simClr = lastAction.color;
+
+        return (
+          <div style={{ flexShrink:0, borderTop:"1px solid #e9ecef" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
+              {/* 내 판단 */}
+              <div style={{ padding:"7px 10px", background: myTradeThisTurn ? (myTradeThisTurn.type === "매수" ? "#fff5f5" : "#e7f5ff") : "#f8f9fa", borderRight:"1px solid #e9ecef" }}>
+                <div style={{ fontSize:9, color:"#868e96", marginBottom:2 }}>나의 판단 ({simTurn+1}턴)</div>
+                <div style={{ fontSize:12, fontWeight:700, color: myTradeThisTurn ? (myTradeThisTurn.type === "매수" ? "#e03131" : "#1971c2") : "#495057" }}>{myActLabel}</div>
+              </div>
+              {/* 원칙 판단 */}
+              <div style={{ padding:"7px 10px", background: simBg }}>
+                <div style={{ fontSize:9, color:"#868e96", marginBottom:2 }}>원칙 판단 ({simTurn+1}턴)</div>
+                <div style={{ fontSize:12, fontWeight:700, color: simClr }}>{simActLabel.split("—")[0].trim()}</div>
+              </div>
+            </div>
+            {lastAction.reason && (
+              <div style={{ padding:"4px 10px", background:"#f8f9fa", fontSize:10, color:"#495057", borderTop:"1px solid #e9ecef" }}>
+                {lastAction.reason}
+              </div>
+            )}
+            <div style={{ padding:"2px 10px 4px", background:"#f8f9fa", fontSize:9, color:"#adb5bd" }}>
+              {allCandles[absIdx] ? fmtDate(new Date(allCandles[absIdx].date)) : ""}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 3번: 실시간 수익 곡선 비교 */}
+      {(() => {
+        const len = Math.max(simPnlHist.length, myPnlHist.length, 2);
+        const W = 316, H = 56, padL = 2, padR = 36, padT = 4, padB = 4;
+        const allVals = [...simPnlHist, ...myPnlHist].filter(v => isFinite(v));
+        const minV = Math.min(...allVals, -2);
+        const maxV = Math.max(...allVals,  2);
+        const rng  = maxV - minV || 1;
+        const sx2 = (i: number) => padL + (i / Math.max(len - 1, 1)) * (W - padL - padR);
+        const sy2 = (v: number) => padT + H - ((v - minV) / rng) * (H - padT - padB);
+        const zeroY = sy2(0);
+        const toPath = (arr: number[]) => arr.map((v, i) => `${i === 0 ? "M" : "L"}${sx2(i).toFixed(1)},${sy2(v).toFixed(1)}`).join(" ");
+        const simPath = toPath(simPnlHist);
+        const myPath  = toPath(myPnlHist.slice(0, simTurn + 1));
+        const curSimV = simPnlHist[simPnlHist.length - 1] ?? 0;
+        const curMyV  = myPnlHist[simTurn] ?? 0;
+        return (
+          <div style={{ flexShrink:0, background:"#fff", borderTop:"1px solid #e9ecef", padding:"6px 12px 4px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
+              <div style={{ display:"flex", gap:10 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                  <div style={{ width:16, height:2, background:"#2f9e44" }} />
+                  <span style={{ fontSize:9, color:"#3b6d11", fontWeight:700 }}>원칙 {curSimV >= 0 ? "+" : ""}{curSimV.toFixed(1)}%</span>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                  <div style={{ width:16, height:2, background:"#1971c2", opacity:.7 }} />
+                  <span style={{ fontSize:9, color:"#185fa5" }}>나 {curMyV >= 0 ? "+" : ""}{curMyV.toFixed(1)}%</span>
+                </div>
+              </div>
+              <span style={{ fontSize:9, color:"#adb5bd" }}>{simTurn+1}/{MAX_TURNS}턴</span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display:"block" }}>
+              <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY} stroke="#e9ecef" strokeWidth="1"/>
+              <text x={W - padR + 2} y={zeroY + 3} fontSize="7" fill="#adb5bd">0%</text>
+              {/* 내 곡선 */}
+              {myPnlHist.length > 1 && <path d={myPath} fill="none" stroke="#1971c2" strokeWidth="1.5" strokeOpacity=".6" strokeDasharray="4,2"/>}
+              {/* 원칙 곡선 */}
+              {simPnlHist.length > 1 && <path d={simPath} fill="none" stroke="#2f9e44" strokeWidth="2"/>}
+              {/* 현재 위치 도트 */}
+              {simPnlHist.length > 0 && <circle cx={sx2(simPnlHist.length - 1)} cy={sy2(curSimV)} r="3" fill="#2f9e44"/>}
+              {myPnlHist.length > 0 && <circle cx={sx2(Math.min(simTurn, myPnlHist.length - 1))} cy={sy2(curMyV)} r="3" fill="#1971c2" fillOpacity=".7"/>}
+            </svg>
+          </div>
+        );
+      })()}
+
       {/* 자산 현황 */}
-      <div style={{ flexShrink:0, padding:"6px 12px 8px", background:"#f8f9fa", borderTop:"1px solid #e9ecef" }}>
+      <div style={{ flexShrink:0, padding:"5px 12px 6px", background:"#f8f9fa", borderTop:"1px solid #e9ecef" }}>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
           <div>
             <div style={{ fontSize:9, color:C2.muted }}>시뮬 자산</div>
@@ -1570,6 +1658,104 @@ function PrincipleSimulator({
           </div>
         </div>
       </div>
+
+      {/* 네비게이션 바 — 자산 현황 아래 */}
+      {(() => {
+        // 전체 재계산 후 target 턴으로 점프 (다음 매매 버그 수정)
+        const jumpToTurn = (target: number) => {
+          setPlaying(false);
+          const s = { cash: initCash, holdings: 0, avgCost: 0, trades: [] as SimTrade[] };
+          for (let i = 0; i <= target; i++) {
+            const idx2 = gameStart + i;
+            if (idx2 >= allCandles.length) break;
+            const price2 = allCandles[idx2].close;
+            const krwP2  = price2 * exchRate;
+            const ma102  = calcMAat(allCandles, idx2, 10);
+            const { action: a2, reason: r2, ratio: rt2 } = decidePrinciple(allCandles, idx2, s.holdings, s.cash, initCash, isQQQ);
+            if (a2 === "매수" && rt2 > 0) {
+              const qty2 = Math.max(1, Math.floor(initCash * rt2 / krwP2));
+              const cost2 = qty2 * krwP2;
+              if (cost2 <= s.cash) {
+                s.avgCost = (s.avgCost * s.holdings + cost2) / (s.holdings + qty2);
+                s.holdings += qty2; s.cash -= cost2;
+                const g2 = ma102 && ma102 > 0 ? (price2 - ma102) / ma102 * 100 : 0;
+                s.trades.push({ turn:i, type:"매수", price:price2, qty:qty2, reason:r2, gap10:g2, avgCost:s.avgCost });
+              }
+            } else if (a2 === "매도" && s.holdings > 0) {
+              const pnl2 = (krwP2 - s.avgCost) * s.holdings;
+              const pp2  = s.avgCost > 0 ? (krwP2 - s.avgCost) / s.avgCost * 100 : 0;
+              s.trades.push({ turn:i, type:"매도", price:price2, qty:s.holdings, reason:r2, pnlKrw:pnl2, pnlPct:pp2 });
+              s.cash += s.holdings * krwP2; s.holdings = 0; s.avgCost = 0;
+            }
+          }
+          stateRef.current = s;
+          setCash(s.cash); setHoldings(s.holdings); setAvgCost(s.avgCost);
+          setSimTrades(s.trades);
+          setSimTurn(target);
+        };
+
+        // 전체 미래 매매 턴 목록 (재계산 기반)
+        const allFutureTrades = (() => {
+          const s2 = { cash: initCash, holdings: 0, avgCost: 0 };
+          const turns: number[] = [];
+          for (let i = 0; i < MAX_TURNS; i++) {
+            const idx2 = gameStart + i;
+            if (idx2 >= allCandles.length) break;
+            const price2 = allCandles[idx2].close;
+            const krwP2  = price2 * exchRate;
+            const ma102  = calcMAat(allCandles, idx2, 10);
+            const { action: a2, ratio: rt2 } = decidePrinciple(allCandles, idx2, s2.holdings, s2.cash, initCash, isQQQ);
+            if (a2 === "매수" && rt2 > 0) {
+              const qty2 = Math.max(1, Math.floor(initCash * rt2 / krwP2));
+              const cost2 = qty2 * krwP2;
+              if (cost2 <= s2.cash) {
+                s2.avgCost = (s2.avgCost * s2.holdings + cost2) / (s2.holdings + qty2);
+                s2.holdings += qty2; s2.cash -= cost2;
+                turns.push(i);
+              }
+            } else if (a2 === "매도" && s2.holdings > 0) {
+              s2.cash += s2.holdings * krwP2; s2.holdings = 0; s2.avgCost = 0;
+              turns.push(i);
+            }
+          }
+          return turns;
+        })();
+
+        const prevTurnIdx = [...allFutureTrades].reverse().find(t => t < simTurn);
+        const nextTurnIdx = allFutureTrades.find(t => t > simTurn);
+        const hasPrev = prevTurnIdx !== undefined;
+        const hasNext = nextTurnIdx !== undefined;
+
+        const btnStyle = (active: boolean) => ({
+          padding:"5px 10px", borderRadius:6, border:"none",
+          background: active ? "#7048e8" : "#333",
+          color: active ? "#fff" : "#555",
+          fontSize:11, cursor: active ? "pointer" : "default",
+          fontFamily:"inherit", whiteSpace:"nowrap" as const,
+        });
+
+        return (
+          <div style={{ background:"#1a1a1a", padding:"6px 10px", display:"grid", gridTemplateColumns:"1fr auto auto auto 1fr", alignItems:"center", gap:5, flexShrink:0, borderTop:"1px solid #222" }}>
+            <button onClick={() => hasPrev && jumpToTurn(prevTurnIdx!)} style={btnStyle(hasPrev)}>◀◀ 이전 매매</button>
+            <button onClick={() => { setPlaying(false); if (simTurn > 0) { processTurn(simTurn); setSimTurn(t => Math.max(0, t-1)); } }}
+              style={btnStyle(simTurn > 0)}>◀ 1턴</button>
+            <div style={{ textAlign:"center", fontSize:10, color:"#888" }}>
+              <div>{simTurn+1} / {MAX_TURNS}</div>
+              <div style={{ color:"#7048e8" }}>{allFutureTrades.length}건</div>
+            </div>
+            <button onClick={() => {
+              setPlaying(false);
+              if (simTurn < MAX_TURNS - 1) {
+                const next = simTurn + 1;
+                processTurn(next);
+                if (next >= MAX_TURNS - 1) setDone(true);
+                setSimTurn(next);
+              }
+            }} style={btnStyle(simTurn < MAX_TURNS - 1)}>1턴 ▶</button>
+            <button onClick={() => hasNext && jumpToTurn(nextTurnIdx!)} style={{ ...btnStyle(hasNext), justifySelf:"end" as const }}>다음 매매 ▶▶</button>
+          </div>
+        );
+      })()}
 
       {/* 완료 비교 오버레이 */}
       {done && (
