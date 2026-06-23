@@ -787,11 +787,20 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
                 {/* 손익비 R */}
                 <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>손익비 (R)</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: rMultiple >= 2 ? "#2f9e44" : rMultiple >= 1 ? "#f97316" : "#e03131" }}>
-                    {rMultiple >= 99 ? "∞" : rMultiple.toFixed(1) + "R"}
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>손익비</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: rMultiple >= 3 ? "#2f9e44" : rMultiple >= 1.5 ? "#f97316" : "#e03131" }}>
+                    {rMultiple >= 99 ? "∞" : rMultiple.toFixed(1) + "배"}
                   </div>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 1 }}>평균수익 / 평균손실</div>
+                  {/* 3배 기준 게이지 */}
+                  <div style={{ position: "relative", height: 5, background: "#e9ecef", borderRadius: 3, marginTop: 4 }}>
+                    <div style={{ width: `${Math.min(rMultiple / 3 * 100, 100)}%`, height: "100%", background: rMultiple >= 3 ? "#2f9e44" : rMultiple >= 1.5 ? "#f97316" : "#e03131", borderRadius: 3, transition: "width .4s" }} />
+                    {/* 3배 목표 기준선 */}
+                    <div style={{ position: "absolute", right: 0, top: -3, bottom: -3, width: 2, background: "#2f9e44", borderRadius: 1 }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, marginTop: 2 }}>
+                    <span style={{ color: "#adb5bd" }}>평균수익 / 평균손실</span>
+                    <span style={{ color: "#2f9e44", fontWeight: 600 }}>목표 3배</span>
+                  </div>
                 </div>
                 {/* 기대값 */}
                 <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
@@ -830,13 +839,15 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
               {/* 핵심 인사이트 */}
               <div style={{ background: rMultiple >= 2 ? "#f0fdf4" : rMultiple >= 1 ? "#fff7ed" : "#fff5f5", borderRadius: 8, padding: "8px 12px", fontSize: 11, lineHeight: 1.6,
                 color: rMultiple >= 2 ? "#166534" : rMultiple >= 1 ? "#854f0b" : "#991b1b" }}>
-                {rMultiple >= 2
-                  ? `✅ 손익비 ${rMultiple.toFixed(1)}R — 수익은 길게, 손실은 짧게 원칙 실천 중`
+                {rMultiple >= 3
+                  ? `✅ 손익비 ${rMultiple.toFixed(1)}배 — 이상적! 수익은 길게, 손실은 짧게 실천 중`
+                  : rMultiple >= 1.5
+                  ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 좋은 방향. 목표는 3배 이상입니다`
                   : rMultiple >= 1
-                  ? `⚠️ 손익비 ${rMultiple.toFixed(1)}R — 수익:손실 비율 개선 필요 (목표 2R 이상)`
+                  ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 아직 부족. 수익을 더 길게 유지하세요`
                   : rMultiple === 0 && losses.length === 0
                   ? "📊 손절 없음 — 아직 확인된 손실 거래 없음"
-                  : `❌ 손익비 ${rMultiple.toFixed(1)}R — 손실이 수익보다 큼. 손절 기준을 더 타이트하게`}
+                  : `❌ 손익비 ${rMultiple.toFixed(1)}배 — 손실이 수익보다 큼. 손절을 더 빠르게`}
               </div>
             </div>
           )}
