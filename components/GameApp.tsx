@@ -425,48 +425,53 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
       {/* 매수▲ / 매도▼ 마커 + 정보 박스 */}
       {markers && markers.map((m, mi) => {
         if (!candles[m.idx]) return null;
-        const cx   = sx(m.idx);
-        const c    = candles[m.idx];
+        const cx    = sx(m.idx);
+        const c     = candles[m.idx];
         const isBuy = m.type === "매수";
-        const markerY = isBuy ? sy(c.low)  + 6  : sy(c.high) - 6;
-        const boxY    = isBuy ? sy(c.low)  + 20 : sy(c.high) - 54;
-        const clr  = isBuy ? "#e03131" : "#1971c2";
-        const bgClr= isBuy ? "rgba(255,245,245,0.92)" : "rgba(231,245,255,0.92)";
+        const clr   = isBuy ? "#e03131" : "#1971c2";
+        const bgClr = isBuy ? "rgba(255,245,245,0.95)" : "rgba(231,245,255,0.95)";
 
-        // 박스 위치: 오른쪽 끝이면 왼쪽으로
-        const bw = 88;
-        const bx = (cx + bw + 55 > width) ? cx - bw - 2 : cx + 2;
+        const bw = 112;  // 박스 너비
+        const bh = isBuy ? 50 : 38;  // 박스 높이
+
+        // 수평 위치: 오른쪽 넘으면 왼쪽으로
+        const bx = (cx + bw + 55 > width) ? cx - bw - 4 : cx + 4;
+
+        // 수직 위치: 차트 영역 안으로 클램핑
+        const rawBoxY  = isBuy ? sy(c.low) + 18 : sy(c.high) - bh - 8;
+        const boxY     = Math.min(Math.max(rawBoxY, PAD.t + 2), height - bh - PAD.b - 2);
+        const markerY  = isBuy ? sy(c.low) + 6 : sy(c.high) - 6;
 
         return (
           <g key={mi}>
             {/* 수직 점선 */}
             <line x1={cx} y1={sy(c.high) - 4} x2={cx} y2={sy(c.low) + 4}
-              stroke={clr} strokeWidth="1" strokeDasharray="2,2" strokeOpacity="0.5" />
-            {/* 마커 삼각형 텍스트 */}
-            <text x={cx} y={markerY} textAnchor="middle" fontSize={13} fill={clr} fontWeight="bold">
+              stroke={clr} strokeWidth="1" strokeDasharray="3,2" strokeOpacity="0.5" />
+            {/* 마커 삼각형 */}
+            <text x={cx} y={markerY} textAnchor="middle" fontSize={14} fill={clr} fontWeight="bold">
               {isBuy ? "▲" : "▼"}
             </text>
             {/* 정보 박스 */}
-            <rect x={bx} y={boxY} width={bw} height={isBuy ? 38 : 30}
-              rx="4" fill={bgClr} stroke={clr} strokeWidth="0.8" strokeOpacity="0.6" />
+            <rect x={bx} y={boxY} width={bw} height={bh}
+              rx="5" fill={bgClr} stroke={clr} strokeWidth="1" strokeOpacity="0.7" />
             {isBuy ? (
               <>
-                <text x={bx+4} y={boxY+11} fontSize="8" fill={clr} fontWeight="bold">
+                <text x={bx+6} y={boxY+13} fontSize="10" fill={clr} fontWeight="bold">
                   매수 {m.qty}주
                 </text>
-                <text x={bx+4} y={boxY+22} fontSize="8" fill="#495057">
+                <text x={bx+6} y={boxY+27} fontSize="9" fill="#495057">
                   이격도 {m.gap10 != null ? (m.gap10 >= 0 ? "+" : "") + m.gap10.toFixed(1) + "%" : "-"}
                 </text>
-                <text x={bx+4} y={boxY+33} fontSize="8" fill="#495057">
+                <text x={bx+6} y={boxY+41} fontSize="9" fill="#495057">
                   평단 {m.avgCost != null ? Math.round(m.avgCost).toLocaleString() : "-"}
                 </text>
               </>
             ) : (
               <>
-                <text x={bx+4} y={boxY+11} fontSize="8" fill={clr} fontWeight="bold">
+                <text x={bx+6} y={boxY+14} fontSize="10" fill={clr} fontWeight="bold">
                   매도 {m.qty}주
                 </text>
-                <text x={bx+4} y={boxY+23} fontSize="8"
+                <text x={bx+6} y={boxY+30} fontSize="10"
                   fill={m.pnlPct != null && m.pnlPct >= 0 ? "#2f9e44" : "#e03131"} fontWeight="bold">
                   {m.pnlPct != null ? (m.pnlPct >= 0 ? "+" : "") + m.pnlPct.toFixed(1) + "%" : "-"}
                 </text>
@@ -1399,7 +1404,7 @@ function PrincipleSimulator({
   // 재생 루프
   React.useEffect(() => {
     if (!playing || done) return;
-    const ms = speed === 3 ? 100 : speed === 2 ? 250 : 500;
+    const ms = speed === 3 ? 200 : speed === 2 ? 500 : 1000;
     intervalRef.current = setInterval(() => {
       setSimTurn(prev => {
         const next = prev + 1;
@@ -1442,6 +1447,84 @@ function PrincipleSimulator({
           style={{ padding:"4px 12px", borderRadius:6, border:"none", background: playing ? "#444" : C2.accent, color:"#fff", fontSize:12, cursor:done?"default":"pointer", fontFamily:"inherit" }}>
           {playing ? "⏸" : done ? "완료" : "▶ 재생"}
         </button>
+      </div>
+
+      {/* 네비게이션 바 */}
+      <div style={{ background:"#1a1a1a", padding:"4px 10px", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+        {/* 이전 카드 */}
+        <button onClick={() => {
+          setPlaying(false);
+          const prevTrade = [...simTrades].reverse().find(t => t.turn < simTurn);
+          if (prevTrade) {
+            const target = prevTrade.turn;
+            // 해당 턴까지 상태 재계산
+            const s = { cash: initCash, holdings: 0, avgCost: 0, trades: [] as SimTrade[] };
+            for (let i = 0; i <= target; i++) {
+              const idx2 = gameStart + i;
+              if (idx2 >= allCandles.length) break;
+              const price2  = allCandles[idx2].close;
+              const krwP2   = price2 * exchRate;
+              const ma102   = calcMAat(allCandles, idx2, 10);
+              const { action: a2, reason: r2, ratio: rt2 } = decidePrinciple(allCandles, idx2, s.holdings, s.cash, initCash, isQQQ);
+              if (a2 === "매수" && rt2 > 0) {
+                const qty2 = Math.max(1, Math.floor(initCash * rt2 / krwP2));
+                const cost2 = qty2 * krwP2;
+                if (cost2 <= s.cash) {
+                  s.avgCost = (s.avgCost * s.holdings + cost2) / (s.holdings + qty2);
+                  s.holdings += qty2; s.cash -= cost2;
+                  const g2 = ma102 && ma102 > 0 ? (price2 - ma102) / ma102 * 100 : 0;
+                  s.trades.push({ turn:i, type:"매수", price:price2, qty:qty2, reason:r2, gap10:g2, avgCost:s.avgCost });
+                }
+              } else if (a2 === "매도" && s.holdings > 0) {
+                const pnl2 = (krwP2 - s.avgCost) * s.holdings;
+                const pp2  = s.avgCost > 0 ? (krwP2 - s.avgCost) / s.avgCost * 100 : 0;
+                s.trades.push({ turn:i, type:"매도", price:price2, qty:s.holdings, reason:r2, pnlKrw:pnl2, pnlPct:pp2 });
+                s.cash += s.holdings * krwP2; s.holdings = 0; s.avgCost = 0;
+              }
+            }
+            stateRef.current = s;
+            setCash(s.cash); setHoldings(s.holdings); setAvgCost(s.avgCost);
+            setSimTrades(s.trades);
+            setSimTurn(target);
+          }
+        }} disabled={simTrades.length === 0 || simTrades[0].turn >= simTurn}
+          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: simTrades.length === 0 || simTrades[0].turn >= simTurn ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>◀◀ 이전 매매</button>
+
+        {/* 1턴 뒤로 */}
+        <button onClick={() => { setPlaying(false); if (simTurn > 0) setSimTurn(t => t - 1); }}
+          disabled={simTurn <= 0}
+          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: simTurn <= 0 ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>◀ 1턴</button>
+
+        <div style={{ flex:1, textAlign:"center", fontSize:11, color:"#888" }}>
+          {simTurn+1} / {MAX_TURNS}턴
+          {simTrades.length > 0 && <span style={{ color:"#adb5bd", marginLeft:6 }}>매매 {simTrades.length}건</span>}
+        </div>
+
+        {/* 1턴 앞으로 */}
+        <button onClick={() => {
+          setPlaying(false);
+          if (simTurn < MAX_TURNS - 1) {
+            const next = simTurn + 1;
+            processTurn(next);
+            if (next >= MAX_TURNS - 1) { setDone(true); }
+            setSimTurn(next);
+          }
+        }} disabled={simTurn >= MAX_TURNS - 1}
+          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: simTurn >= MAX_TURNS - 1 ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>1턴 ▶</button>
+
+        {/* 다음 카드 */}
+        <button onClick={() => {
+          setPlaying(false);
+          const nextTrade = simTrades.find(t => t.turn > simTurn);
+          if (nextTrade) {
+            const target = nextTrade.turn;
+            for (let i = simTurn + 1; i <= target; i++) {
+              processTurn(i);
+            }
+            setSimTurn(target);
+          }
+        }} disabled={!simTrades.find(t => t.turn > simTurn)}
+          style={{ padding:"4px 10px", borderRadius:6, border:"none", background:"#333", color: !simTrades.find(t => t.turn > simTurn) ? "#555" : "#fff", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>다음 매매 ▶▶</button>
       </div>
 
       {/* 진행 바 */}
