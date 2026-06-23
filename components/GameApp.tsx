@@ -588,6 +588,53 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const totalGained   = scoredTurns.reduce((s, t) => s + t.score, 0);
   const followScore   = totalMaxScore > 0 ? Math.round((totalGained / totalMaxScore) * 100) : 0;
   const iLabel = interval === "1wk" ? "주봉" : "월봉";
+
+  // ── 손익비(R) 계산
+  const buyTrades  = trades.filter(t => t.type === "매수");
+  const sellTrades = trades.filter(t => t.type === "매도");
+
+  // 매수→매도 페어로 수익/손실 계산
+  const tradePnls: number[] = [];
+  let pendingBuys: { qty: number; krwPrice: number }[] = [];
+  trades.forEach(t => {
+    if (t.type === "매수") {
+      pendingBuys.push({ qty: t.qty, krwPrice: t.krwPrice });
+    } else {
+      // 선입선출로 매수 비용 계산
+      let remainQty = t.qty;
+      let costKrw = 0;
+      const newPending: typeof pendingBuys = [];
+      for (const b of pendingBuys) {
+        if (remainQty <= 0) { newPending.push(b); continue; }
+        const used = Math.min(b.qty, remainQty);
+        costKrw += used * b.krwPrice;
+        remainQty -= used;
+        if (b.qty > used) newPending.push({ qty: b.qty - used, krwPrice: b.krwPrice });
+      }
+      pendingBuys = newPending;
+      if (costKrw > 0) {
+        const pnlAmt = (t.krwPrice - costKrw / t.qty) * t.qty;
+        tradePnls.push(pnlAmt);
+      }
+    }
+  });
+
+  // 남은 보유분은 최종 자산에서 평가
+  const holdingCost = pendingBuys.reduce((s, b) => s + b.qty * b.krwPrice, 0);
+  if (holdingCost > 0) {
+    const holdingValue = totalAsset - (initCash - trades.filter(t=>t.type==="매수").reduce((s,t)=>s+t.qty*t.krwPrice,0) + trades.filter(t=>t.type==="매도").reduce((s,t)=>s+t.qty*t.krwPrice,0));
+    if (holdingValue > 0) tradePnls.push(holdingValue - holdingCost);
+  }
+
+  const wins  = tradePnls.filter(p => p > 0);
+  const losses = tradePnls.filter(p => p < 0);
+  const avgWin  = wins.length  ? wins.reduce((s,p)=>s+p,0)  / wins.length  : 0;
+  const avgLoss = losses.length ? Math.abs(losses.reduce((s,p)=>s+p,0) / losses.length) : 0;
+  const rMultiple = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? 99 : 0;
+  const winRate   = tradePnls.length > 0 ? wins.length / tradePnls.length : 0;
+  const expectancy = tradePnls.length > 0
+    ? tradePnls.reduce((s,p)=>s+p,0) / tradePnls.length
+    : 0;
   const MAX_TURNS = turnScores.length;
 
   // ── A안: 채점 근거 기반 goodPoints/badPoints ──────────────────
@@ -718,14 +765,81 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
           <div style={{ fontSize: 14, color: "#495057", marginTop: 4 }}>{fmtKRW(totalAsset)}</div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 0" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-            {[["수익금", ((totalAsset - initCash) >= 0 ? "+" : "") + fmtKRW(totalAsset - initCash)], ["총 거래", trades.length + "회"], ["추세추종 점수", followScore + "점 / 100점"], ["평균 판단 점수", avgTurnScore + "점"]].map(([k, v]) => (
-              <div key={k} style={{ background: "#f8f9fa", borderRadius: 10, padding: "12px 14px", border: "1px solid #e9ecef" }}>
-                <div style={{ fontSize: 11, color: "#adb5bd" }}>{k}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 3 }}>{v}</div>
+          {/* 기본 지표 2개 */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+            {([
+              ["수익금", ((totalAsset - initCash) >= 0 ? "+" : "") + fmtKRW(totalAsset - initCash), (totalAsset - initCash) >= 0 ? "#2f9e44" : "#e03131"],
+              ["총 거래", trades.length + "회", "#212529"],
+              ["추세추종 점수", followScore + "점 / 100점", followScore >= 70 ? "#2f9e44" : followScore >= 40 ? "#f97316" : "#e03131"],
+              ["평균 판단 점수", avgTurnScore + "점", "#212529"],
+            ] as const).map(([k, v, col]) => (
+              <div key={k} style={{ background: "#f8f9fa", borderRadius: 10, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                <div style={{ fontSize: 10, color: "#adb5bd" }}>{k}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: col }}>{v}</div>
               </div>
             ))}
           </div>
+
+          {/* 손익비 섹션 */}
+          {tradePnls.length > 0 && (
+            <div style={{ background: "#f8f9fa", borderRadius: 12, border: "1px solid #e9ecef", padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#212529", marginBottom: 10 }}>📐 손익비 분석</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                {/* 손익비 R */}
+                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>손익비 (R)</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: rMultiple >= 2 ? "#2f9e44" : rMultiple >= 1 ? "#f97316" : "#e03131" }}>
+                    {rMultiple >= 99 ? "∞" : rMultiple.toFixed(1) + "R"}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 1 }}>평균수익 / 평균손실</div>
+                </div>
+                {/* 기대값 */}
+                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>거래당 기대값</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: expectancy >= 0 ? "#2f9e44" : "#e03131" }}>
+                    {expectancy >= 0 ? "+" : ""}{fmtKRW(Math.round(Math.abs(expectancy))).replace("원","")}{Math.abs(expectancy) >= 10000 ? "원" : "원"}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 1 }}>
+                    {expectancy >= 0 ? "양의 기대값 — 전략 유효" : "음의 기대값 — 전략 재점검"}
+                  </div>
+                </div>
+                {/* 평균 수익 */}
+                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>평균 수익 ({wins.length}회)</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#2f9e44" }}>
+                    {wins.length > 0 ? "+" + fmtKRW(Math.round(avgWin)) : "—"}
+                  </div>
+                  <div style={{ marginTop: 4, height: 3, background: "#e9ecef", borderRadius: 2 }}>
+                    <div style={{ width: `${Math.min(winRate * 100, 100)}%`, height: "100%", background: "#2f9e44", borderRadius: 2 }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 2 }}>승률 {Math.round(winRate * 100)}%</div>
+                </div>
+                {/* 평균 손실 */}
+                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>평균 손실 ({losses.length}회)</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#e03131" }}>
+                    {losses.length > 0 ? "-" + fmtKRW(Math.round(avgLoss)) : "—"}
+                  </div>
+                  <div style={{ marginTop: 4, height: 3, background: "#e9ecef", borderRadius: 2 }}>
+                    <div style={{ width: `${Math.min((1 - winRate) * 100, 100)}%`, height: "100%", background: "#e03131", borderRadius: 2 }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 2 }}>패율 {Math.round((1 - winRate) * 100)}%</div>
+                </div>
+              </div>
+
+              {/* 핵심 인사이트 */}
+              <div style={{ background: rMultiple >= 2 ? "#f0fdf4" : rMultiple >= 1 ? "#fff7ed" : "#fff5f5", borderRadius: 8, padding: "8px 12px", fontSize: 11, lineHeight: 1.6,
+                color: rMultiple >= 2 ? "#166534" : rMultiple >= 1 ? "#854f0b" : "#991b1b" }}>
+                {rMultiple >= 2
+                  ? `✅ 손익비 ${rMultiple.toFixed(1)}R — 수익은 길게, 손실은 짧게 원칙 실천 중`
+                  : rMultiple >= 1
+                  ? `⚠️ 손익비 ${rMultiple.toFixed(1)}R — 수익:손실 비율 개선 필요 (목표 2R 이상)`
+                  : rMultiple === 0 && losses.length === 0
+                  ? "📊 손절 없음 — 아직 확인된 손실 거래 없음"
+                  : `❌ 손익비 ${rMultiple.toFixed(1)}R — 손실이 수익보다 큼. 손절 기준을 더 타이트하게`}
+              </div>
+            </div>
+          )}
           <div style={{ marginBottom: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
               <span style={{ color: "#495057", fontWeight: 600 }}>📊 추세추종 원칙 준수율</span>
