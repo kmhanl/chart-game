@@ -1295,7 +1295,7 @@ function PrincipleSimulator({
   const exchRate  = isQQQ ? 1350 : 1;
 
   const [simTurn,    setSimTurn]    = React.useState(0);
-  const [playing,    setPlaying]    = React.useState(false);
+  const [playing,    setPlaying]    = React.useState(true);
   const [speed,      setSpeed]      = React.useState(1);   // 1 | 2 | 3
   const [done,       setDone]       = React.useState(false);
   const [cash,       setCash]       = React.useState(initCash);
