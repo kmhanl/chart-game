@@ -804,15 +804,23 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
             const insightBg  = rMultiple >= 2 ? "#f0fdf4" : rMultiple >= 1 ? "#fff7ed" : "#fff5f5";
             const insightClr = rMultiple >= 2 ? "#166534" : rMultiple >= 1 ? "#854f0b" : "#991b1b";
             const insightBdr = rMultiple >= 2 ? "#bbf7d0" : rMultiple >= 1 ? "#fed7aa" : "#fca5a5";
-            const insightMsg = rMultiple >= 3
+            const insightMsg =
+              // 수익 거래 0회 (손익비 계산 불가)
+              wins.length === 0 && losses.length === 0
+              ? "📊 거래 없음 — 아직 매매 기록이 없습니다"
+              : wins.length === 0
+              ? `❌ 수익 거래 없음 — 아직 한 번도 수익을 실현하지 못했습니다\n10MA 초입 구간 진입 후 추세가 살아있는 동안 보유를 유지하는 연습이 필요합니다`
+              // 정상 케이스
+              : rMultiple >= 3
               ? `✅ 손익비 ${rMultiple.toFixed(1)}배 + 승률 ${winRatePct}%로 전략이 유효합니다\n수익은 길게, 손실은 짧게 원칙 실천 중`
               : rMultiple >= 1.5
-              ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 좋은 방향. 목표는 3배 이상입니다\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`
+              ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 좋은 방향입니다. 목표는 3배 이상\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`
               : rMultiple >= 1
-              ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 아직 부족. 수익을 더 길게 유지하세요\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`
-              : rMultiple === 0 && losses.length === 0
+              ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 아직 부족합니다. 수익을 더 길게 유지하세요\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`
+              : losses.length === 0
               ? "📊 손절 없음 — 아직 확인된 손실 거래 없음"
-              : `❌ 기대값 음수 — 손익비(${rMultiple.toFixed(1)}배)는 나쁘지 않지만 승률(${winRatePct}%)이 너무 낮아 전략이 손해입니다\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`;
+              // 손익비 1배 미만 (손실 > 수익)
+              : `❌ 손익비 ${rMultiple.toFixed(1)}배 — 손실이 수익보다 큽니다\n수익은 더 길게 보유하고, 손절은 더 빠르게 실천하세요`;
 
             return (
               <div style={{ background: "#f8f9fa", borderRadius: 12, border: "1px solid #e9ecef", padding: "12px 14px", marginBottom: 14 }}>
@@ -1381,7 +1389,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     return r[3].vol < avg * 0.7;
   })();
 
-  // ── 거래량 20봉 평균 (성승현 돌파 확인 기준)
+  // ── 거래량 20봉 평균 (돌파 확인 기준)
   const vol20Avg = (() => {
     const n = Math.min(20, visibleCandles.length - 1);
     if (n < 5) return 0;
@@ -1829,7 +1837,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                     </div>
                   </div>
                   <div style={{ fontSize: 10, color: C.muted }}>
-                    {volSurge ? "성승현 매수 조건 충족 — 1차 매수 진입 고려" : "거래량 부족 — 눌림 확인 후 재진입 대기 (150% 필요)"}
+                    {volSurge ? "돌파 매수 조건 충족 — 1차 매수 진입 고려" : "거래량 부족 — 눌림 확인 후 재진입 대기 (150% 필요)"}
                   </div>
                 </div>
               )}
