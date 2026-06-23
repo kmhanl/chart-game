@@ -400,7 +400,7 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers }: {
   candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[];
   width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string;
-  markers?: { idx:number; type:"매수"|"매도"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number }[]
+  markers?: { idx:number; type:"매수"|"매도"; source?:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[]
 }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
@@ -422,60 +422,77 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   };
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: "block", height: svgHeight ?? "100%", ...style }}>
-      {/* 매수▲ / 매도▼ 마커 + 정보 박스 */}
+      {/* 매수▲ / 매도▼ 마커 (원칙=채움, 내꺼=빈 테두리+다른 오프셋) */}
       {markers && markers.map((m, mi) => {
         if (!candles[m.idx]) return null;
         const cx    = sx(m.idx);
         const c     = candles[m.idx];
-        const isBuy = m.type === "매수";
-        const clr   = isBuy ? "#e03131" : "#1971c2";
-        const bgClr = isBuy ? "rgba(255,245,245,0.95)" : "rgba(231,245,255,0.95)";
+        const isBuy  = m.type === "매수";
+        const isSim  = m.source !== "mine";  // "sim" or undefined → 원칙
+        const isMine = m.source === "mine";
 
-        const bw = 220;  // 박스 너비
-        const bh = isBuy ? 52 : 40;  // 박스 높이
+        // 색상: 원칙(진함) vs 내꺼(연함)
+        const clr     = isBuy
+          ? (isSim ? "#e03131" : "#f97316")   // 매수: 빨강 vs 오렌지
+          : (isSim ? "#1971c2" : "#0c8599");  // 매도: 파랑 vs 청록
+        const bgClr   = isBuy
+          ? (isSim ? "rgba(255,245,245,0.95)" : "rgba(255,247,237,0.95)")
+          : (isSim ? "rgba(231,245,255,0.95)" : "rgba(224,249,255,0.95)");
 
-        // 수평 위치: 오른쪽 넘으면 왼쪽으로
-        const bx = (cx + bw + 55 > width) ? cx - bw - 4 : cx + 4;
+        const bw = 220;
+        const bh = isBuy ? 36 : 32;
 
-        // 수직 위치: 차트 영역 안으로 클램핑
-        const rawBoxY  = isBuy ? sy(c.low) + 18 : sy(c.high) - bh - 8;
-        const boxY     = Math.min(Math.max(rawBoxY, PAD.t + 2), height - bh - PAD.b - 2);
-        const markerY  = isBuy ? sy(c.low) + 6 : sy(c.high) - 6;
+        // 위치 오프셋: 내꺼는 원칙보다 조금 더 멀리
+        const simOff  = 18;
+        const mineOff = 36;
+        const off = isMine ? mineOff : simOff;
+
+        const rawBoxY = isBuy ? sy(c.low) + off + 4 : sy(c.high) - bh - off - 4;
+        const boxY    = Math.min(Math.max(rawBoxY, PAD.t + 2), height - bh - PAD.b - 2);
+        const markerY = isBuy ? sy(c.low) + off : sy(c.high) - off;
+
+        // 삼각형 polygon points (크기 7px)
+        const ts = 7;
+        const buyPts  = `${cx},${markerY} ${cx-ts},${markerY+ts*1.5} ${cx+ts},${markerY+ts*1.5}`;
+        const sellPts = `${cx},${markerY} ${cx-ts},${markerY-ts*1.5} ${cx+ts},${markerY-ts*1.5}`;
+        const pts = isBuy ? buyPts : sellPts;
+
+        // 레이블 텍스트
+        const srcLabel = isSim ? "원칙" : "나";
 
         return (
           <g key={mi}>
             {/* 수직 점선 */}
             <line x1={cx} y1={sy(c.high) - 4} x2={cx} y2={sy(c.low) + 4}
-              stroke={clr} strokeWidth="1" strokeDasharray="3,2" strokeOpacity="0.5" />
-            {/* 마커 삼각형 */}
-            <text x={cx} y={markerY} textAnchor="middle" fontSize={14} fill={clr} fontWeight="bold">
-              {isBuy ? "▲" : "▼"}
-            </text>
+              stroke={clr} strokeWidth="1" strokeDasharray="3,2" strokeOpacity={isMine ? 0.35 : 0.5} />
+            {/* 삼각형: 원칙=채움, 내꺼=빈 테두리 */}
+            {isSim
+              ? <polygon points={pts} fill={clr} />
+              : <polygon points={pts} fill="none" stroke={clr} strokeWidth="1.5" />
+            }
             {/* 정보 박스 */}
-            <rect x={bx} y={boxY} width={bw} height={bh}
+            <rect x={cx + 4} y={boxY} width={bw} height={bh}
               rx="5" fill={bgClr} stroke={clr} strokeWidth="1" strokeOpacity="0.7" />
+            {/* [원칙]/[나] 레이블 배지 */}
+            <rect x={cx + 6} y={boxY + 3} width={22} height={13}
+              rx="3" fill={clr} />
+            <text x={cx + 17} y={boxY + 13} fontSize="8" fill="#fff" textAnchor="middle" fontWeight="bold">
+              {srcLabel}
+            </text>
+            {/* 타이틀 */}
+            <text x={cx + 32} y={boxY + 13} fontSize="10" fill={clr} fontWeight="bold">
+              {isBuy ? "매수" : "매도"} {m.qty}주
+            </text>
             {isBuy ? (
-              <>
-                <text x={bx+6} y={boxY+13} fontSize="10" fill={clr} fontWeight="bold">
-                  매수 {m.qty}주
-                </text>
-                <text x={bx+6} y={boxY+27} fontSize="9" fill="#495057">
-                  이격도 {m.gap10 != null ? (m.gap10 >= 0 ? "+" : "") + m.gap10.toFixed(1) + "%" : "-"}
-                </text>
-                <text x={bx+6} y={boxY+41} fontSize="9" fill="#495057">
-                  평단 {m.avgCost != null ? Math.round(m.avgCost).toLocaleString() : "-"}
-                </text>
-              </>
+              <text x={cx + 6} y={boxY + 27} fontSize="9" fill="#495057">
+                이격 {m.gap10 != null ? (m.gap10 >= 0 ? "+" : "") + m.gap10.toFixed(1) + "%" : "-"}
+                {"  "}평단 {m.avgCost != null ? Math.round(m.avgCost).toLocaleString() : (m.krwPrice != null ? Math.round(m.krwPrice).toLocaleString() : "-")}
+              </text>
             ) : (
-              <>
-                <text x={bx+6} y={boxY+14} fontSize="10" fill={clr} fontWeight="bold">
-                  매도 {m.qty}주
-                </text>
-                <text x={bx+6} y={boxY+30} fontSize="10"
-                  fill={m.pnlPct != null && m.pnlPct >= 0 ? "#2f9e44" : "#e03131"} fontWeight="bold">
-                  {m.pnlPct != null ? (m.pnlPct >= 0 ? "+" : "") + m.pnlPct.toFixed(1) + "%" : "-"}
-                </text>
-              </>
+              <text x={cx + 6} y={boxY + 26} fontSize="10"
+                fill={m.pnlPct != null && m.pnlPct >= 0 ? "#2f9e44" : "#e03131"} fontWeight="bold">
+                {m.pnlPct != null ? (m.pnlPct >= 0 ? "+" : "") + m.pnlPct.toFixed(1) + "%" : "-"}
+              </text>
             )}
           </g>
         );
@@ -1312,6 +1329,7 @@ function PrincipleSimulator({
   const [simPnlHist, setSimPnlHist] = React.useState<number[]>([0]);
   // 2번: 핵심 학습 구간 팝업
   const [highlightInfo, setHighlightInfo] = React.useState<{ title:string; desc:string; simAct:string; myAct:string; afterPct?:number } | null>(null);
+  const [hlCollapsed,   setHlCollapsed]   = React.useState(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval>|null>(null);
 
   // 내부 ref — interval에서 최신 state 참조
@@ -1332,13 +1350,38 @@ function PrincipleSimulator({
     const ai = windowSt + chartSt + i; return calcMAat(allCandles, ai, 240);
   });
 
-  // 매수/매도 마커
-  const markers = simTrades.map(t => {
+  // 원칙 마커 (source: "sim")
+  const simMarkers = simTrades.map(t => {
     const tAbs = gameStart + t.turn;
     const tVis = tAbs - (windowSt + chartSt);
     if (tVis < 0 || tVis >= chartC.length) return null;
-    return { idx: tVis, type: t.type, gap10: t.gap10, avgCost: t.avgCost, pnlPct: t.pnlPct, qty: t.qty };
-  }).filter(Boolean) as { idx:number; type:"매수"|"매도"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number }[];
+    return { idx: tVis, type: t.type, source: "sim" as const,
+             gap10: t.gap10, avgCost: t.avgCost, pnlPct: t.pnlPct, qty: t.qty };
+  }).filter(Boolean) as { idx:number; type:"매수"|"매도"; source:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[];
+
+  // 내 마커 (source: "mine") — simTurn까지만
+  const myMarkersArr = myTrades
+    .filter(t => t.turn <= simTurn)
+    .map(t => {
+      const tAbs = gameStart + t.turn;
+      const tVis = tAbs - (windowSt + chartSt);
+      if (tVis < 0 || tVis >= chartC.length) return null;
+      // 내 매도 수익률 계산
+      let myPnlP: number | undefined;
+      if (t.type === "매도") {
+        const buyTrades = myTrades.filter(b => b.type === "매수" && b.turn < t.turn);
+        if (buyTrades.length > 0) {
+          const avgB = buyTrades.reduce((s, b) => s + b.krwPrice * b.qty, 0) /
+                       buyTrades.reduce((s, b) => s + b.qty, 0);
+          myPnlP = avgB > 0 ? (t.krwPrice - avgB) / avgB * 100 : undefined;
+        }
+      }
+      return { idx: tVis, type: t.type, source: "mine" as const,
+               qty: t.qty, krwPrice: t.krwPrice, pnlPct: myPnlP };
+    }).filter(Boolean) as { idx:number; type:"매수"|"매도"; source:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[];
+
+  // 합산 (원칙 먼저, 내꺼 나중 → 렌더 순서상 내꺼가 위)
+  const markers = [...simMarkers, ...myMarkersArr];
 
   const curPrice   = allCandles[absIdx]?.close ?? 0;
   const curKrw     = curPrice * exchRate;
@@ -1431,6 +1474,7 @@ function PrincipleSimulator({
       const futurePrice = allCandles[futureIdx]?.close ?? allCandles[gameStart + turn].close;
       const afterPct = (futurePrice / allCandles[gameStart + turn].close - 1) * 100;
       setHighlightInfo({ title, desc, simAct: action, myAct: "관망", afterPct });
+      setHlCollapsed(false);  // 새 핵심 구간 등장 시 자동 펼침
     }
   }, [allCandles, gameStart, initCash, isQQQ, exchRate]);
 
@@ -1521,42 +1565,54 @@ function PrincipleSimulator({
         />
       </div>
 
-      {/* 2번: 핵심 학습 구간 팝업 */}
+      {/* 2번: 핵심 학습 구간 팝업 (접기/펼치기) */}
       {highlightInfo && !playing && (
-        <div style={{ flexShrink:0, background:"#f3f0ff", borderTop:"2px solid #7048e8", padding:"10px 12px" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+        <div style={{ flexShrink:0, background:"#f3f0ff", borderTop:"2px solid #7048e8" }}>
+          {/* 헤더 — 항상 표시, 탭해서 접기/펼치기 */}
+          <div
+            onClick={() => setHlCollapsed(c => !c)}
+            style={{ padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <span style={{ fontSize:14 }}>📍</span>
               <span style={{ fontSize:12, fontWeight:700, color:"#3c3489" }}>핵심 구간 — {highlightInfo.title}</span>
             </div>
-            <span style={{ fontSize:9, color:"#534ab7", background:"#EEEDFE", padding:"2px 6px", borderRadius:99 }}>턴 {simTurn+1}</span>
-          </div>
-          <div style={{ background:"#fff", border:"1px solid #afa9ec", borderRadius:8, padding:"8px 10px", marginBottom:8, fontSize:11, color:"#534ab7" }}>
-            {highlightInfo.desc}
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:8 }}>
-            <div style={{ background:"#fff5f5", borderRadius:6, padding:"6px 8px", border:"1px solid #fca5a5" }}>
-              <div style={{ fontSize:9, color:"#a32d2d", marginBottom:2 }}>나의 판단</div>
-              <div style={{ fontSize:12, fontWeight:700, color:"#a32d2d" }}>{highlightInfo.myAct}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:9, color:"#534ab7", background:"#EEEDFE", padding:"2px 6px", borderRadius:99 }}>턴 {simTurn+1}</span>
+              <span style={{ fontSize:12, color:"#7048e8", fontWeight:700 }}>{hlCollapsed ? "∧" : "∨"}</span>
             </div>
-            <div style={{ background:"#f0fdf4", borderRadius:6, padding:"6px 8px", border:"1px solid #86efac" }}>
-              <div style={{ fontSize:9, color:"#3b6d11", marginBottom:2 }}>원칙 판단</div>
-              <div style={{ fontSize:12, fontWeight:700, color:"#3b6d11" }}>
-                {highlightInfo.simAct === "매수" ? "▲ 매수" : highlightInfo.simAct === "매도" ? "▼ 매도" : "👀 관망"}
+          </div>
+
+          {/* 내용 — 접기 시 숨김 */}
+          {!hlCollapsed && (
+            <div style={{ padding:"0 12px 10px" }}>
+              <div style={{ background:"#fff", border:"1px solid #afa9ec", borderRadius:8, padding:"8px 10px", marginBottom:8, fontSize:11, color:"#534ab7" }}>
+                {highlightInfo.desc}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:8 }}>
+                <div style={{ background:"#fff5f5", borderRadius:6, padding:"6px 8px", border:"1px solid #fca5a5" }}>
+                  <div style={{ fontSize:9, color:"#a32d2d", marginBottom:2 }}>나의 판단</div>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#a32d2d" }}>{highlightInfo.myAct}</div>
+                </div>
+                <div style={{ background:"#f0fdf4", borderRadius:6, padding:"6px 8px", border:"1px solid #86efac" }}>
+                  <div style={{ fontSize:9, color:"#3b6d11", marginBottom:2 }}>원칙 판단</div>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#3b6d11" }}>
+                    {highlightInfo.simAct === "매수" ? "▲ 매수" : highlightInfo.simAct === "매도" ? "▼ 매도" : "👀 관망"}
+                  </div>
+                </div>
+              </div>
+              {highlightInfo.afterPct !== undefined && (
+                <div style={{ fontSize:11, color: highlightInfo.afterPct >= 0 ? "#3b6d11" : "#991b1b", background: highlightInfo.afterPct >= 0 ? "#f0fdf4" : "#fff5f5", borderRadius:6, padding:"5px 10px", marginBottom:8, border:`1px solid ${highlightInfo.afterPct >= 0 ? "#86efac" : "#fca5a5"}` }}>
+                  이후 3봉 {highlightInfo.afterPct >= 0 ? "+" : ""}{highlightInfo.afterPct.toFixed(1)}% 변동
+                </div>
+              )}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                <button onClick={() => setHlCollapsed(true)}
+                  style={{ padding:"7px", borderRadius:7, border:"1px solid #afa9ec", background:"#fff", color:"#534ab7", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>∨ 접기</button>
+                <button onClick={() => { setHlCollapsed(true); setPlaying(true); }}
+                  style={{ padding:"7px", borderRadius:7, border:"none", background:"#7048e8", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>계속 재생 ▶</button>
               </div>
             </div>
-          </div>
-          {highlightInfo.afterPct !== undefined && (
-            <div style={{ fontSize:11, color: highlightInfo.afterPct >= 0 ? "#3b6d11" : "#991b1b", background: highlightInfo.afterPct >= 0 ? "#f0fdf4" : "#fff5f5", borderRadius:6, padding:"5px 10px", marginBottom:8, border:`1px solid ${highlightInfo.afterPct >= 0 ? "#86efac" : "#fca5a5"}` }}>
-              이후 3봉 {highlightInfo.afterPct >= 0 ? "+" : ""}{highlightInfo.afterPct.toFixed(1)}% 변동
-            </div>
           )}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-            <button onClick={() => setHighlightInfo(null)}
-              style={{ padding:"7px", borderRadius:7, border:"1px solid #afa9ec", background:"#fff", color:"#534ab7", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>닫기</button>
-            <button onClick={() => { setHighlightInfo(null); setPlaying(true); }}
-              style={{ padding:"7px", borderRadius:7, border:"none", background:"#7048e8", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>계속 재생 ▶</button>
-          </div>
         </div>
       )}
 
