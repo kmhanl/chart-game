@@ -11,6 +11,168 @@ const C = {
   accent: "#7048e8", green: "#2f9e44", red: "#e03131", blue: "#1971c2",
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// 📱 PWA 설치 안내 배너
+// ══════════════════════════════════════════════════════════════════════════════
+function PwaInstallBanner() {
+  const [show,      setShow]      = useState(false);
+  const [platform, setPlatform]  = useState<"ios" | "android" | null>(null);
+  const [step,     setStep]      = useState(0);   // iOS 단계별 안내
+
+  useEffect(() => {
+    // 이미 설치됐으면 표시 안 함
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (isStandalone) return;
+
+    // 닫기 누른 적 있으면 표시 안 함
+    if (sessionStorage.getItem("pwa_banner_closed")) return;
+
+    const ua = navigator.userAgent;
+    const isIos     = /iphone|ipad|ipod/i.test(ua);
+    const isAndroid = /android/i.test(ua);
+    const isMobile  = isIos || isAndroid;
+
+    if (!isMobile) return;
+    setPlatform(isIos ? "ios" : "android");
+    setShow(true);
+  }, []);
+
+  if (!show) return null;
+
+  // ── Android: beforeinstallprompt가 없어도 안내 표시 ──
+  if (platform === "android") {
+    return (
+      <div style={{
+        width: "100%", maxWidth: 480,
+        background: "#f3f0ff", border: "1.5px solid #b197fc",
+        borderRadius: 14, padding: "14px 16px", marginBottom: 16,
+        position: "relative",
+      }}>
+        <button onClick={() => { setShow(false); sessionStorage.setItem("pwa_banner_closed","1"); }}
+          style={{ position:"absolute", top:10, right:12, background:"none", border:"none", fontSize:18, color:C.muted, cursor:"pointer", lineHeight:1 }}>×</button>
+        <div style={{ fontSize:13, fontWeight:700, color:C.accent, marginBottom:6 }}>
+          📲 홈 화면에 추가하면 앱처럼 사용 가능!
+        </div>
+        <div style={{ fontSize:12, color:C.sub, lineHeight:1.7 }}>
+          Chrome 브라우저 오른쪽 상단 <b>⋮</b> 메뉴<br/>
+          → <b>"홈 화면에 추가"</b> 또는 <b>"앱 설치"</b> 탭
+        </div>
+      </div>
+    );
+  }
+
+  // ── iOS: 단계별 안내 ──
+  const steps = [
+    {
+      icon: "⬆️",
+      title: "1단계 — 공유 버튼 탭",
+      desc: "Safari 하단 가운데 공유 버튼(⬆️)을 탭하세요.",
+      img: (
+        <div style={{ background:"#e9ecef", borderRadius:10, padding:"10px 14px", marginTop:8, fontSize:12, color:C.sub, textAlign:"center", lineHeight:1.8 }}>
+          Safari 주소창 아래<br/>
+          <span style={{ fontSize:22 }}>⬆️</span><br/>
+          <span style={{ fontSize:11, color:C.muted }}>하단 가운데 공유 아이콘</span>
+        </div>
+      ),
+    },
+    {
+      icon: "➕",
+      title: "2단계 — 홈 화면에 추가",
+      desc: "스크롤해서 \"홈 화면에 추가\" 버튼을 탭하세요.",
+      img: (
+        <div style={{ background:"#e9ecef", borderRadius:10, padding:"10px 14px", marginTop:8, fontSize:12, color:C.sub, lineHeight:1.8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, background:"#fff", borderRadius:8, padding:"8px 12px", marginBottom:4, border:"1px solid #dee2e6" }}>
+            <span style={{ fontSize:20 }}>➕</span>
+            <span style={{ fontWeight:700, color:C.text }}>홈 화면에 추가</span>
+          </div>
+          <div style={{ fontSize:11, color:C.muted, textAlign:"center" }}>목록에서 위 항목을 탭</div>
+        </div>
+      ),
+    },
+    {
+      icon: "✅",
+      title: "3단계 — 추가 버튼 탭",
+      desc: "오른쪽 상단 \"추가\" 버튼을 탭하면 설치 완료!",
+      img: (
+        <div style={{ background:"#e9ecef", borderRadius:10, padding:"10px 14px", marginTop:8, fontSize:12, color:C.sub, lineHeight:1.8 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:"#fff", borderRadius:8, padding:"8px 12px", border:"1px solid #dee2e6" }}>
+            <span style={{ color:C.muted }}>취소</span>
+            <span style={{ fontSize:13, fontWeight:700 }}>차트게임</span>
+            <span style={{ color:C.accent, fontWeight:700 }}>추가</span>
+          </div>
+          <div style={{ fontSize:11, color:C.muted, textAlign:"center", marginTop:4 }}>오른쪽 "추가" 탭 → 홈 화면에 아이콘 생성</div>
+        </div>
+      ),
+    },
+  ];
+
+  const cur = steps[step];
+
+  return (
+    <div style={{
+      width:"100%", maxWidth:480,
+      background:"#f3f0ff", border:"1.5px solid #b197fc",
+      borderRadius:14, padding:"14px 16px", marginBottom:16,
+      position:"relative",
+    }}>
+      {/* 닫기 */}
+      <button onClick={() => { setShow(false); sessionStorage.setItem("pwa_banner_closed","1"); }}
+        style={{ position:"absolute", top:10, right:12, background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer", lineHeight:1 }}>×</button>
+
+      {/* 헤더 */}
+      <div style={{ fontSize:13, fontWeight:700, color:C.accent, marginBottom:10 }}>
+        📲 아이폰 홈 화면에 앱으로 설치하기
+      </div>
+
+      {/* 현재 단계 */}
+      <div style={{ background:"#fff", borderRadius:10, padding:"12px 14px", border:"1px solid #d0bfff" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+          <span style={{ fontSize:18 }}>{cur.icon}</span>
+          <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{cur.title}</span>
+        </div>
+        <div style={{ fontSize:12, color:C.sub, lineHeight:1.6 }}>{cur.desc}</div>
+        {cur.img}
+      </div>
+
+      {/* 단계 진행 버튼 */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:12 }}>
+        {/* 도트 인디케이터 */}
+        <div style={{ display:"flex", gap:5 }}>
+          {steps.map((_, i) => (
+            <div key={i} onClick={() => setStep(i)} style={{
+              width: i === step ? 18 : 7, height:7, borderRadius:99, cursor:"pointer",
+              background: i === step ? C.accent : "#d0bfff",
+              transition:"width .2s",
+            }} />
+          ))}
+        </div>
+
+        <div style={{ display:"flex", gap:8 }}>
+          {step > 0 && (
+            <button onClick={() => setStep(s => s - 1)} style={{
+              padding:"7px 14px", borderRadius:8, border:"1.5px solid #b197fc",
+              background:"#fff", color:C.accent, fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            }}>← 이전</button>
+          )}
+          {step < steps.length - 1 ? (
+            <button onClick={() => setStep(s => s + 1)} style={{
+              padding:"7px 14px", borderRadius:8, border:"none",
+              background:C.accent, color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            }}>다음 →</button>
+          ) : (
+            <button onClick={() => { setShow(false); sessionStorage.setItem("pwa_banner_closed","1"); }} style={{
+              padding:"7px 14px", borderRadius:8, border:"none",
+              background:C.green, color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+            }}>✅ 완료</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const INIT_CASH = 10_000_000;
 const fmtKRW = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
 const fmtPct = (n: number) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
@@ -371,6 +533,9 @@ export default function LobbyClient({ user }: Props) {
           </div>
         </div>
       )}
+
+      {/* 📱 PWA 설치 안내 배너 */}
+      <PwaInstallBanner />
 
       {/* 봉 선택 */}
       <div style={{ marginBottom: 16, width: "100%", maxWidth: 480 }}>
