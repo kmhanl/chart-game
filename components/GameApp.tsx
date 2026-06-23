@@ -348,14 +348,22 @@ function scoreTurnAction(action: string, snap: Record<string, unknown>, diagnosi
       if (!snap.above240) { score += 5; reasons.push({ ok: true, text: "240MA 아래 청산 (+5)" }); }
     } else { reasons.push({ ok: null, text: "240MA 데이터 부족 — 해당 항목 제외" }); }
   } else {
+    // C안: 보유 중 + 상승 추세 관망은 만점 (비중 유지 = 올바른 판단)
+    const holdingShares = (snap.holdingQty as number | undefined) ?? 0;
+    const isHoldingUptrend = holdingShares > 0 && !!snap.above10;
+
     maxScore = has240 ? 20 : 15;
-    if (has240) {
+    if (isHoldingUptrend) {
+      // B+C: 보유 중 상승 추세 관망 → 만점
+      score = maxScore;
+      reasons.push({ ok: true, text: "비중 유지 — 상승 추세 중 보유 지속 (만점)" });
+    } else if (has240) {
       if (!snap.above240)    { score += 20; reasons.push({ ok: true,  text: "240MA 아래 관망 정석 (+20)" }); }
-      else if (!snap.above10){ score += 10; reasons.push({ ok: true,  text: "10MA 이탈 관망 (+10)" }); }
-      else                   { score +=  5; reasons.push({ ok: false, text: "상승 추세 중 관망 (+5, 기회 놓침)" }); }
+      else if (!snap.above10){ score += 15; reasons.push({ ok: true,  text: "10MA 이탈 관망 (+15)" }); }
+      else                   { score +=  5; reasons.push({ ok: false, text: "상승 추세 중 미보유 관망 (+5, 매수 기회)" }); }
     } else {
-      if (!snap.above10){ score += 15; reasons.push({ ok: true,  text: "10MA 이탈 관망 (+10)" }); }
-      else              { score +=  5; reasons.push({ ok: false, text: "상승 추세 중 관망 (+5, 기회 놓침)" }); }
+      if (!snap.above10){ score += 15; reasons.push({ ok: true,  text: "10MA 이탈 관망 (+15)" }); }
+      else              { score +=  5; reasons.push({ ok: false, text: "상승 추세 중 미보유 관망 (+5, 매수 기회)" }); }
       reasons.push({ ok: null, text: "240MA 데이터 부족 — 해당 항목 제외" });
     }
   }
@@ -1425,7 +1433,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     return upper > body * 1.5;
   })();
 
-  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio, overheat10, upperTailSignal };
+  const snap: Record<string, unknown> = { price: currentPrice, prevPrice, ma5: ma5Cur, ma10: ma10Cur, ma240: ma240Cur, prevMa5: ma5Prev, prevMa10: ma10Prev, above240, above5, above10, goldenCross, deadCross, nearMA10, volDecreasing, volSurge, volMassiveSell, volShrink, volRatio, overheat10, upperTailSignal, holdingQty: holdings };
   // 📈 N차 파동 감지 (chartCandles 기준)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const waveSegments = useMemo(() => detectWaves(chartCandles, chartMa10), [curIdx]);
@@ -1492,15 +1500,10 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 	  const didTradeThisTurn = lastTrade && lastTrade.turn === turn;
 
 	  // 최신 turnScores 직접 계산 (클로저 문제 방지)
-	  // 보유 중 관망은 채점 제외 (score: 0, maxScore: 0)
-	  const holdScore: TurnScore = { score: 0, maxScore: 0, action: "hold", reasons: [{ ok: null, text: "보유 유지 — 채점 제외" }] };
-	  const holdTurnScore = (!didTradeThisTurn && holdings > 0)
-		? holdScore
-		: scoreTurnAction("hold", snap, diagnosis);
-
+	  // 보유 중 + 상승 추세 관망 → scoreTurnAction 내에서 만점 처리 (holdingQty snap으로 전달됨)
 	  const latestScores = didTradeThisTurn
 		? turnScores
-		: [...turnScores, holdTurnScore];
+		: [...turnScores, scoreTurnAction("hold", snap, diagnosis)];
 
 	  if (!didTradeThisTurn) {
 		setTurnScores(latestScores);
