@@ -397,7 +397,7 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 // 차트 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string }) {
+function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string; markers?: {idx:number; type:"매수"|"매도"}[] }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b, n = candles.length;
@@ -418,6 +418,26 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   };
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: "block", height: svgHeight ?? "100%", ...style }}>
+      {/* 마커 (매수▲ / 매도▼) */}
+      {markers && markers.map((m, mi) => {
+        const n = candles.length;
+        if (n === 0) return null;
+        const x = (m.idx + 0.5) / n * width;
+        const c = candles[m.idx];
+        if (!c) return null;
+        const minP = Math.min(...candles.map(c=>c.low));
+        const maxP = Math.max(...candles.map(c=>c.high));
+        const rng  = maxP - minP || 1;
+        const pad  = height * 0.06;
+        const toY  = (p: number) => pad + (1 - (p - minP) / rng) * (height - pad * 2);
+        if (m.type === "매수") {
+          const y = toY(c.low) + 8;
+          return <text key={mi} x={x} y={y} textAnchor="middle" fontSize={14} fill="#e03131">▲</text>;
+        } else {
+          const y = toY(c.high) - 4;
+          return <text key={mi} x={x} y={y} textAnchor="middle" fontSize={14} fill="#1971c2">▼</text>;
+        }
+      })}
       {lbls.map((l, i) => (
         <g key={i}>
           <line x1={PAD.l} y1={l.y} x2={PAD.l + W} y2={l.y} stroke="#e9ecef" strokeWidth="1" />
@@ -587,6 +607,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   onClose: () => void; onRestart: () => void;
 }) {
   const [selectedTurn, setSelectedTurn] = React.useState<number | null>(null);
+  const [showSim,      setShowSim]      = React.useState(false);
 
   const pnl = ((totalAsset / initCash) - 1) * 100;
   // maxScore > 0인 턴만 채점 (보유 중 관망 제외)
@@ -1143,15 +1164,331 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
         </div>
         <div style={{ padding: "12px 20px 32px", display: "flex", gap: 10, flexShrink: 0, borderTop: "1px solid #e9ecef" }}>
           <button onClick={onClose} style={{ flex: 1, padding: "13px", borderRadius: 10, border: "1.5px solid #dee2e6", background: "#fff", color: "#212529", fontSize: 14, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>🏠 로비</button>
-          <button onClick={onRestart} style={{ flex: 2, padding: "13px", borderRadius: 10, border: "none", background: "#212529", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>🔄 새 게임</button>
+          <button onClick={() => setShowSim(true)} style={{ flex: 1.5, padding: "13px", borderRadius: 10, border: "none", background: "#7048e8", color: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>📽️ 원칙 시뮬</button>
+          <button onClick={onRestart} style={{ flex: 1.5, padding: "13px", borderRadius: 10, border: "none", background: "#212529", color: "#fff", fontSize: 14, cursor: "pointer", fontWeight: 700, fontFamily: "inherit" }}>🔄 새 게임</button>
         </div>
       </div>
+      {/* 원칙 시뮬레이터 */}
+      {showSim && (
+        <PrincipleSimulator
+          allCandles={allCandles} gameStart={gameStart}
+          initCash={initCash} isQQQ={isQQQProp}
+          myTotalAsset={totalAsset} myPnl={pnl}
+          onClose={() => setShowSim(false)}
+          fmtKRW={fmtKRW} fmtPct={fmtPct} fmtDate={fmtDate}
+          market={market} stockMeta={stockMeta} interval={interval}
+        />
+      )}
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 메인 GameApp
+// 📽️ 원칙 시뮬레이션 컴포넌트
+// ══════════════════════════════════════════════════════════════════════════════
+const MA240_PERIOD_SIM = 240;
+const WINDOW_SIM       = 60;
+
+function calcMA(candles: Candle[], idx: number, period: number): number | null {
+  if (idx < period - 1) return null;
+  let s = 0;
+  for (let i = idx - period + 1; i <= idx; i++) s += candles[i].close;
+  return s / period;
+}
+
+interface SimTrade {
+  turn:    number;
+  type:    "매수" | "매도";
+  price:   number;
+  qty:     number;
+  reason:  string;
+  pnlKrw?: number;
+}
+
+function decidePrinciple(
+  candles: Candle[], absIdx: number, holdings: number, cash: number, initCash: number, isQQQ: boolean
+): { action: "매수" | "매도" | "관망"; reason: string; ratio: number } {
+  const ma5  = calcMA(candles, absIdx,   5);
+  const ma10 = calcMA(candles, absIdx,  10);
+  const ma240= calcMA(candles, absIdx, 240);
+  const pma5 = calcMA(candles, absIdx - 1,  5);
+  const pma10= calcMA(candles, absIdx - 1, 10);
+  if (!ma10 || !ma5) return { action: "관망", reason: "이평선 계산 중", ratio: 0 };
+
+  const price      = candles[absIdx].close;
+  const above10    = price > ma10;
+  const above240   = !ma240 || price > ma240;
+  const goldenCross= !!pma5 && !!pma10 && pma5 < pma10 && ma5 >= ma10;
+  const deadCross  = !!pma5 && !!pma10 && pma5 > pma10 && ma5 <= ma10;
+  const gap10      = ma10 > 0 ? (price - ma10) / ma10 * 100 : 0;
+  const nearMA10   = above10 && gap10 >= 0 && gap10 <= 3;
+  const vol20Avg   = (() => { const sl = candles.slice(Math.max(0, absIdx - 20), absIdx); return sl.length ? sl.reduce((s,c)=>s+c.vol,0)/sl.length : 0; })();
+  const volDec     = vol20Avg > 0 && candles[absIdx].vol < vol20Avg * 0.8;
+  const holdRatio  = holdings * price / initCash;
+  const exchRate   = isQQQ ? 1350 : 1;
+
+  if ((deadCross || !above10) && holdings > 0)
+    return { action: "매도", reason: deadCross ? "데드크로스 — 즉시 전량 매도" : "10MA 이탈 — 원칙 손절", ratio: 1 };
+  if (goldenCross && above240 && holdRatio < 0.4 && cash >= price * exchRate)
+    return { action: "매수", reason: "골든크로스 — 10% 매수", ratio: 0.10 };
+  if (nearMA10 && volDec && above240 && holdRatio < 0.3 && cash >= price * exchRate)
+    return { action: "매수", reason: "눌림목 + 거래량 감소 — 5% 분할 매수", ratio: 0.05 };
+  if (above10 && holdings > 0)
+    return { action: "관망", reason: "추세 유지 중 — 보유", ratio: 0 };
+  if (!above10 && holdings === 0)
+    return { action: "관망", reason: "10MA 아래 — 관망", ratio: 0 };
+  return { action: "관망", reason: "조건 미충족 — 대기", ratio: 0 };
+}
+
+function PrincipleSimulator({
+  allCandles, gameStart, initCash, isQQQ, myTotalAsset, myPnl,
+  onClose, fmtKRW, fmtPct, fmtDate, market, stockMeta, interval,
+}: {
+  allCandles: Candle[]; gameStart: number; initCash: number; isQQQ: boolean;
+  myTotalAsset: number; myPnl: number; onClose: () => void;
+  fmtKRW: (n:number)=>string; fmtPct: (n:number)=>string;
+  fmtDate: (d:Date|undefined)=>string;
+  market: string; stockMeta: StockMeta|null; interval: string;
+}) {
+  const MAX_TURNS = 50;
+  const exchRate  = isQQQ ? 1350 : 1;
+
+  const [simTurn,    setSimTurn]    = React.useState(0);
+  const [playing,    setPlaying]    = React.useState(false);
+  const [speed,      setSpeed]      = React.useState(1);   // 1 | 2 | 3
+  const [done,       setDone]       = React.useState(false);
+  const [cash,       setCash]       = React.useState(initCash);
+  const [holdings,   setHoldings]   = React.useState(0);
+  const [avgCost,    setAvgCost]    = React.useState(0);
+  const [simTrades,  setSimTrades]  = React.useState<SimTrade[]>([]);
+  const [lastAction, setLastAction] = React.useState<{ action:string; reason:string; color:string } | null>(null);
+  const intervalRef = React.useRef<ReturnType<typeof setInterval>|null>(null);
+
+  // 내부 ref — interval에서 최신 state 참조
+  const stateRef = React.useRef({ cash: initCash, holdings: 0, avgCost: 0, trades: [] as SimTrade[] });
+
+  const absIdx   = gameStart + simTurn;
+  const windowSt = Math.max(absIdx - MA240_PERIOD_SIM - WINDOW_SIM + 1, 0);
+  const visible  = allCandles.slice(windowSt, absIdx + 1);
+  const chartSt  = Math.max(visible.length - WINDOW_SIM, 0);
+  const chartC   = visible.slice(chartSt);
+  const chartMa5:  (number|null)[] = chartC.map((_, i) => {
+    const ai = windowSt + chartSt + i; return calcMA(allCandles, ai, 5);
+  });
+  const chartMa10: (number|null)[] = chartC.map((_, i) => {
+    const ai = windowSt + chartSt + i; return calcMA(allCandles, ai, 10);
+  });
+  const chartMa240:(number|null)[] = chartC.map((_, i) => {
+    const ai = windowSt + chartSt + i; return calcMA(allCandles, ai, 240);
+  });
+
+  // 매수/매도 마커
+  const markers = simTrades.map(t => {
+    const tAbs = gameStart + t.turn;
+    const tVis = tAbs - (windowSt + chartSt);
+    if (tVis < 0 || tVis >= chartC.length) return null;
+    return { idx: tVis, type: t.type };
+  }).filter(Boolean) as { idx: number; type: "매수"|"매도" }[];
+
+  const curPrice   = allCandles[absIdx]?.close ?? 0;
+  const curKrw     = curPrice * exchRate;
+  const totalAsset = stateRef.current.cash + stateRef.current.holdings * curKrw;
+  const pnlPct     = (totalAsset / initCash - 1) * 100;
+
+  // 한 턴 처리
+  const processTurn = React.useCallback((turn: number) => {
+    const idx = gameStart + turn;
+    if (idx >= allCandles.length || turn >= MAX_TURNS) return;
+    const { cash: c, holdings: h, avgCost: ac, trades: tr } = stateRef.current;
+    const price  = allCandles[idx].close;
+    const krwP   = price * exchRate;
+    const { action, reason, ratio } = decidePrinciple(allCandles, idx, h, c, initCash, isQQQ);
+
+    let nc = c, nh = h, nac = ac;
+    let newTrade: SimTrade | null = null;
+    let aColor = "#6c757d";
+
+    if (action === "매수" && ratio > 0) {
+      const buyKrw = Math.floor(initCash * ratio);
+      const qty    = Math.max(1, Math.floor(buyKrw / krwP));
+      const cost   = qty * krwP;
+      if (cost <= nc) {
+        nc  = nc - cost;
+        nac = (nac * nh + cost) / (nh + qty);
+        nh  = nh + qty;
+        newTrade = { turn, type:"매수", price, qty, reason };
+        aColor = "#e03131";
+      }
+    } else if (action === "매도" && h > 0) {
+      const pnl = (krwP - ac) * h;
+      nc = nc + h * krwP;
+      newTrade = { turn, type:"매도", price, qty: h, reason, pnlKrw: pnl };
+      nh = 0; nac = 0;
+      aColor = "#1971c2";
+    }
+
+    stateRef.current = { cash: nc, holdings: nh, avgCost: nac, trades: newTrade ? [...tr, newTrade] : tr };
+    setCash(nc);
+    setHoldings(nh);
+    setAvgCost(nac);
+    if (newTrade) setSimTrades(prev => [...prev, newTrade!]);
+    setLastAction({ action: action === "관망" ? `👀 ${reason}` : action === "매수" ? `▲ 매수 — ${reason}` : `▼ 매도 — ${reason}`, reason, color: aColor });
+  }, [allCandles, gameStart, initCash, isQQQ, exchRate]);
+
+  // 재생 루프
+  React.useEffect(() => {
+    if (!playing || done) return;
+    const ms = speed === 3 ? 200 : speed === 2 ? 500 : 1000;
+    intervalRef.current = setInterval(() => {
+      setSimTurn(prev => {
+        const next = prev + 1;
+        processTurn(next);
+        if (next >= MAX_TURNS - 1) {
+          setPlaying(false);
+          setDone(true);
+          return MAX_TURNS - 1;
+        }
+        return next;
+      });
+    }, ms);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [playing, done, speed, processTurn]);
+
+  // 초기 첫 턴 처리
+  React.useEffect(() => { processTurn(0); }, []);
+
+  const simFinalPnl = (totalAsset / initCash - 1) * 100;
+  const diff        = simFinalPnl - myPnl;
+
+  const C2 = { bg:"#fff", border:"#e9ecef", text:"#212529", sub:"#495057", muted:"#adb5bd", accent:"#7048e8", red:"#e03131", blue:"#1971c2", green:"#2f9e44", surface:"#f8f9fa" };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"#000", zIndex:10000, display:"flex", flexDirection:"column" }}>
+      {/* 헤더 */}
+      <div style={{ background:"#111", padding:"8px 12px", display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+        <button onClick={onClose} style={{ background:"none", border:"none", color:"#adb5bd", fontSize:13, cursor:"pointer", padding:"2px 6px", fontFamily:"inherit" }}>← 결과로</button>
+        <span style={{ color:"#fff", fontSize:13, fontWeight:700, flex:1 }}>📽️ 원칙 시뮬레이션</span>
+        {/* 속도 */}
+        <div style={{ display:"flex", gap:4 }}>
+          {([1,2,3] as const).map(s => (
+            <button key={s} onClick={()=>setSpeed(s)} style={{ padding:"3px 8px", borderRadius:6, border:"none", background: speed===s ? C2.accent : "#333", color: speed===s ? "#fff" : "#adb5bd", fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
+              {s===1?"1x":s===2?"2x":"⏩"}
+            </button>
+          ))}
+        </div>
+        {/* 재생/일시정지 */}
+        <button onClick={()=>setPlaying(p=>!p)} disabled={done}
+          style={{ padding:"4px 12px", borderRadius:6, border:"none", background: playing ? "#444" : C2.accent, color:"#fff", fontSize:12, cursor:done?"default":"pointer", fontFamily:"inherit" }}>
+          {playing ? "⏸" : done ? "완료" : "▶ 재생"}
+        </button>
+      </div>
+
+      {/* 진행 바 */}
+      <div style={{ height:3, background:"#222", flexShrink:0 }}>
+        <div style={{ width:`${(simTurn+1)/MAX_TURNS*100}%`, height:"100%", background:C2.accent, transition:"width .2s" }} />
+      </div>
+
+      {/* 차트 */}
+      <div style={{ flex:1, minHeight:0, background:"#fff" }}>
+        <CandleChart
+          candles={chartC} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240}
+          svgHeight="100%"
+          style={{ height:"100%" }}
+          markers={markers}
+        />
+      </div>
+
+      {/* 이번 턴 판단 배너 */}
+      {lastAction && (
+        <div style={{ flexShrink:0, padding:"6px 12px", background: lastAction.color === "#e03131" ? "#fff5f5" : lastAction.color === "#1971c2" ? "#e7f5ff" : "#f8f9fa", borderTop:"1px solid #e9ecef" }}>
+          <div style={{ fontSize:12, fontWeight:700, color:lastAction.color }}>{lastAction.action}</div>
+          <div style={{ fontSize:10, color:C2.sub, marginTop:1 }}>턴 {simTurn+1}/{MAX_TURNS} · {allCandles[absIdx] ? fmtDate(new Date(allCandles[absIdx].date)) : ""}</div>
+        </div>
+      )}
+
+      {/* 자산 현황 */}
+      <div style={{ flexShrink:0, padding:"6px 12px 8px", background:"#f8f9fa", borderTop:"1px solid #e9ecef" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+          <div>
+            <div style={{ fontSize:9, color:C2.muted }}>시뮬 자산</div>
+            <div style={{ fontSize:13, fontWeight:800, color: simFinalPnl>=0 ? C2.red : C2.blue }}>{fmtPct(simFinalPnl)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:9, color:C2.muted }}>내 결과</div>
+            <div style={{ fontSize:13, fontWeight:700, color: myPnl>=0 ? C2.red : C2.blue }}>{fmtPct(myPnl)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:9, color:C2.muted }}>차이</div>
+            <div style={{ fontSize:13, fontWeight:800, color: diff>=0 ? C2.green : C2.red }}>{diff>=0?"+":""}{diff.toFixed(1)}%p</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 완료 비교 오버레이 */}
+      {done && (
+        <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:10 }}>
+          <div style={{ background:"#fff", borderRadius:16, padding:"20px", width:"min(360px,90vw)", maxHeight:"80vh", overflowY:"auto" }}>
+            <div style={{ textAlign:"center", marginBottom:14 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:C2.text, marginBottom:8 }}>📊 시뮬레이션 완료</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <div style={{ background:"#f8f9fa", borderRadius:10, padding:"12px", border:"1px solid #e9ecef" }}>
+                  <div style={{ fontSize:10, color:C2.muted, marginBottom:3 }}>내 플레이</div>
+                  <div style={{ fontSize:22, fontWeight:800, color: myPnl>=0?C2.red:C2.blue }}>{fmtPct(myPnl)}</div>
+                  <div style={{ fontSize:10, color:C2.sub, marginTop:2 }}>{fmtKRW(myTotalAsset)}</div>
+                </div>
+                <div style={{ background: simFinalPnl>=0?"#f0fdf4":"#fff5f5", borderRadius:10, padding:"12px", border:`1px solid ${simFinalPnl>=0?"#bbf7d0":"#fca5a5"}` }}>
+                  <div style={{ fontSize:10, color:C2.muted, marginBottom:3 }}>원칙 시뮬</div>
+                  <div style={{ fontSize:22, fontWeight:800, color: simFinalPnl>=0?C2.red:C2.blue }}>{fmtPct(simFinalPnl)}</div>
+                  <div style={{ fontSize:10, color:C2.sub, marginTop:2 }}>{fmtKRW(Math.round(totalAsset))}</div>
+                </div>
+              </div>
+              {/* 차이 */}
+              <div style={{ marginTop:10, padding:"8px 12px", background: diff>=0?"#f0fdf4":"#fff7ed", borderRadius:8, border:`1px solid ${diff>=0?"#bbf7d0":"#fed7aa"}` }}>
+                <span style={{ fontSize:13, fontWeight:800, color: diff>=0?C2.green:"#e65100" }}>
+                  {diff>=0 ? `원칙대로 했다면 ${diff.toFixed(1)}%p 더 벌었습니다` : `이번엔 내 판단이 ${Math.abs(diff).toFixed(1)}%p 앞섰습니다 🎉`}
+                </span>
+              </div>
+            </div>
+
+            {/* 원칙 매매 내역 */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:C2.text, marginBottom:6 }}>원칙 매매 내역 ({simTrades.length}건)</div>
+              {simTrades.length === 0
+                ? <div style={{ fontSize:12, color:C2.muted, textAlign:"center", padding:"10px 0" }}>매매 없음 (조건 미충족)</div>
+                : <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                    {simTrades.map((t,i) => (
+                      <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 10px", borderRadius:8, background: t.type==="매수"?"#fff5f5":"#e7f5ff", border:`1px solid ${t.type==="매수"?"#fca5a5":"#74c0fc"}`, fontSize:11 }}>
+                        <span style={{ fontWeight:700, color: t.type==="매수"?C2.red:C2.blue, width:36 }}>{t.type}</span>
+                        <span style={{ color:C2.sub, flex:1, paddingLeft:6, fontSize:10 }}>{t.reason}</span>
+                        {t.type==="매도" && t.pnlKrw !== undefined && (
+                          <span style={{ fontWeight:700, color: t.pnlKrw>=0?C2.green:C2.red, width:70, textAlign:"right" }}>
+                            {t.pnlKrw>=0?"+":""}{fmtKRW(Math.round(t.pnlKrw))}
+                          </span>
+                        )}
+                        <span style={{ color:C2.muted, marginLeft:6, width:28 }}>{t.turn+1}턴</span>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>{ setDone(false); setSimTurn(0); setCash(initCash); setHoldings(0); setAvgCost(0); setSimTrades([]); stateRef.current={cash:initCash,holdings:0,avgCost:0,trades:[]}; processTurn(0); }}
+                style={{ flex:1, padding:"11px", borderRadius:10, border:"1.5px solid #dee2e6", background:"#fff", color:C2.text, fontSize:13, cursor:"pointer", fontWeight:600, fontFamily:"inherit" }}>
+                🔁 다시 보기
+              </button>
+              <button onClick={onClose}
+                style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:C2.text, color:"#fff", fontSize:13, cursor:"pointer", fontWeight:700, fontFamily:"inherit" }}>
+                결과로 돌아가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════════════
