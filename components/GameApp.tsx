@@ -397,7 +397,11 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 // 차트 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers }: { candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[]; width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string; markers?: {idx:number; type:"매수"|"매도"}[] }) {
+function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers }: {
+  candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[];
+  width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string;
+  markers?: { idx:number; type:"매수"|"매도"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number }[]
+}) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b, n = candles.length;
@@ -418,25 +422,58 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   };
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: "block", height: svgHeight ?? "100%", ...style }}>
-      {/* 마커 (매수▲ / 매도▼) */}
+      {/* 매수▲ / 매도▼ 마커 + 정보 박스 */}
       {markers && markers.map((m, mi) => {
-        const n = candles.length;
-        if (n === 0) return null;
-        const x = (m.idx + 0.5) / n * width;
-        const c = candles[m.idx];
-        if (!c) return null;
-        const minP = Math.min(...candles.map(c=>c.low));
-        const maxP = Math.max(...candles.map(c=>c.high));
-        const rng  = maxP - minP || 1;
-        const pad  = height * 0.06;
-        const toY  = (p: number) => pad + (1 - (p - minP) / rng) * (height - pad * 2);
-        if (m.type === "매수") {
-          const y = toY(c.low) + 8;
-          return <text key={mi} x={x} y={y} textAnchor="middle" fontSize={14} fill="#e03131">▲</text>;
-        } else {
-          const y = toY(c.high) - 4;
-          return <text key={mi} x={x} y={y} textAnchor="middle" fontSize={14} fill="#1971c2">▼</text>;
-        }
+        if (!candles[m.idx]) return null;
+        const cx   = sx(m.idx);
+        const c    = candles[m.idx];
+        const isBuy = m.type === "매수";
+        const markerY = isBuy ? sy(c.low)  + 6  : sy(c.high) - 6;
+        const boxY    = isBuy ? sy(c.low)  + 20 : sy(c.high) - 54;
+        const clr  = isBuy ? "#e03131" : "#1971c2";
+        const bgClr= isBuy ? "rgba(255,245,245,0.92)" : "rgba(231,245,255,0.92)";
+
+        // 박스 위치: 오른쪽 끝이면 왼쪽으로
+        const bw = 88;
+        const bx = (cx + bw + 55 > width) ? cx - bw - 2 : cx + 2;
+
+        return (
+          <g key={mi}>
+            {/* 수직 점선 */}
+            <line x1={cx} y1={sy(c.high) - 4} x2={cx} y2={sy(c.low) + 4}
+              stroke={clr} strokeWidth="1" strokeDasharray="2,2" strokeOpacity="0.5" />
+            {/* 마커 삼각형 텍스트 */}
+            <text x={cx} y={markerY} textAnchor="middle" fontSize={13} fill={clr} fontWeight="bold">
+              {isBuy ? "▲" : "▼"}
+            </text>
+            {/* 정보 박스 */}
+            <rect x={bx} y={boxY} width={bw} height={isBuy ? 38 : 30}
+              rx="4" fill={bgClr} stroke={clr} strokeWidth="0.8" strokeOpacity="0.6" />
+            {isBuy ? (
+              <>
+                <text x={bx+4} y={boxY+11} fontSize="8" fill={clr} fontWeight="bold">
+                  매수 {m.qty}주
+                </text>
+                <text x={bx+4} y={boxY+22} fontSize="8" fill="#495057">
+                  이격도 {m.gap10 != null ? (m.gap10 >= 0 ? "+" : "") + m.gap10.toFixed(1) + "%" : "-"}
+                </text>
+                <text x={bx+4} y={boxY+33} fontSize="8" fill="#495057">
+                  평단 {m.avgCost != null ? Math.round(m.avgCost).toLocaleString() : "-"}
+                </text>
+              </>
+            ) : (
+              <>
+                <text x={bx+4} y={boxY+11} fontSize="8" fill={clr} fontWeight="bold">
+                  매도 {m.qty}주
+                </text>
+                <text x={bx+4} y={boxY+23} fontSize="8"
+                  fill={m.pnlPct != null && m.pnlPct >= 0 ? "#2f9e44" : "#e03131"} fontWeight="bold">
+                  {m.pnlPct != null ? (m.pnlPct >= 0 ? "+" : "") + m.pnlPct.toFixed(1) + "%" : "-"}
+                </text>
+              </>
+            )}
+          </g>
+        );
       })}
       {lbls.map((l, i) => (
         <g key={i}>
@@ -1197,12 +1234,16 @@ function calcMAat(candles: Candle[], idx: number, period: number): number | null
 }
 
 interface SimTrade {
-  turn:    number;
-  type:    "매수" | "매도";
-  price:   number;
-  qty:     number;
-  reason:  string;
-  pnlKrw?: number;
+  turn:     number;
+  type:     "매수" | "매도";
+  price:    number;
+  qty:      number;
+  reason:   string;
+  pnlKrw?:  number;
+  pnlPct?:  number;
+  gap10?:   number;   // 매수 시 이격도
+  avgCost?: number;   // 매수 후 평단
+  holdings?:number;   // 매수 후 보유 주수
 }
 
 function decidePrinciple(
@@ -1287,8 +1328,8 @@ function PrincipleSimulator({
     const tAbs = gameStart + t.turn;
     const tVis = tAbs - (windowSt + chartSt);
     if (tVis < 0 || tVis >= chartC.length) return null;
-    return { idx: tVis, type: t.type };
-  }).filter(Boolean) as { idx: number; type: "매수"|"매도" }[];
+    return { idx: tVis, type: t.type, gap10: t.gap10, avgCost: t.avgCost, pnlPct: t.pnlPct, qty: t.qty };
+  }).filter(Boolean) as { idx:number; type:"매수"|"매도"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number }[];
 
   const curPrice   = allCandles[absIdx]?.close ?? 0;
   const curKrw     = curPrice * exchRate;
@@ -1316,13 +1357,15 @@ function PrincipleSimulator({
         nc  = nc - cost;
         nac = (nac * nh + cost) / (nh + qty);
         nh  = nh + qty;
-        newTrade = { turn, type:"매수", price, qty, reason };
+        const gap10 = ma10 > 0 ? (price - ma10) / ma10 * 100 : 0;
+        newTrade = { turn, type:"매수", price, qty, reason, gap10, avgCost: nac, holdings: nh };
         aColor = "#e03131";
       }
     } else if (action === "매도" && h > 0) {
-      const pnl = (krwP - ac) * h;
+      const pnl    = (krwP - ac) * h;
+      const pnlPct = ac > 0 ? (krwP - ac) / ac * 100 : 0;
       nc = nc + h * krwP;
-      newTrade = { turn, type:"매도", price, qty: h, reason, pnlKrw: pnl };
+      newTrade = { turn, type:"매도", price, qty: h, reason, pnlKrw: pnl, pnlPct };
       nh = 0; nac = 0;
       aColor = "#1971c2";
     }
@@ -1332,13 +1375,31 @@ function PrincipleSimulator({
     setHoldings(nh);
     setAvgCost(nac);
     if (newTrade) setSimTrades(prev => [...prev, newTrade!]);
-    setLastAction({ action: action === "관망" ? `👀 ${reason}` : action === "매수" ? `▲ 매수 — ${reason}` : `▼ 매도 — ${reason}`, reason, color: aColor });
+
+    // 배너 상세 메시지
+    let bannerTitle = "";
+    let bannerSub   = "";
+    if (action === "관망") {
+      bannerTitle = `👀 ${reason}`;
+      bannerSub   = nh > 0
+        ? `보유 ${nh}주 · 평단 ${Math.round(nac).toLocaleString()}원 · 현재 ${(curPrice > 0 ? ((curKrw - nac) / nac * 100) : 0).toFixed(1)}% 수익`
+        : "";
+    } else if (action === "매수" && newTrade) {
+      const g = newTrade.gap10 ?? 0;
+      bannerTitle = `▲ 매수 — ${reason}`;
+      bannerSub   = `${newTrade.qty}주 @ ${Math.round(newTrade.price).toLocaleString()}원 · 이격도 ${g >= 0 ? "+" : ""}${g.toFixed(1)}% · 평단 ${Math.round(nac).toLocaleString()}원`;
+    } else if (action === "매도" && newTrade) {
+      const pp = newTrade.pnlPct ?? 0;
+      bannerTitle = `▼ 매도 — ${reason}`;
+      bannerSub   = `${newTrade.qty}주 · 수익률 ${pp >= 0 ? "+" : ""}${pp.toFixed(1)}% · ${pp >= 0 ? "+" : ""}${fmtKRW(Math.round(newTrade.pnlKrw ?? 0))}`;
+    }
+    setLastAction({ action: bannerTitle, reason: bannerSub, color: aColor });
   }, [allCandles, gameStart, initCash, isQQQ, exchRate]);
 
   // 재생 루프
   React.useEffect(() => {
     if (!playing || done) return;
-    const ms = speed === 3 ? 200 : speed === 2 ? 500 : 1000;
+    const ms = speed === 3 ? 100 : speed === 2 ? 250 : 500;
     intervalRef.current = setInterval(() => {
       setSimTurn(prev => {
         const next = prev + 1;
@@ -1402,6 +1463,9 @@ function PrincipleSimulator({
       {lastAction && (
         <div style={{ flexShrink:0, padding:"6px 12px", background: lastAction.color === "#e03131" ? "#fff5f5" : lastAction.color === "#1971c2" ? "#e7f5ff" : "#f8f9fa", borderTop:"1px solid #e9ecef" }}>
           <div style={{ fontSize:12, fontWeight:700, color:lastAction.color }}>{lastAction.action}</div>
+          {lastAction.reason && (
+            <div style={{ fontSize:10, color:"#495057", marginTop:2, lineHeight:1.4 }}>{lastAction.reason}</div>
+          )}
           <div style={{ fontSize:10, color:C2.sub, marginTop:1 }}>턴 {simTurn+1}/{MAX_TURNS} · {allCandles[absIdx] ? fmtDate(new Date(allCandles[absIdx].date)) : ""}</div>
         </div>
       )}
