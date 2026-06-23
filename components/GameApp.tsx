@@ -1413,6 +1413,8 @@ function PrincipleSimulator({
   // 합산 (원칙 먼저, 내꺼 나중 → 렌더 순서상 내꺼가 위)
   const markers = [...simMarkers, ...myMarkersArr];
 
+  const curPrice   = allCandles[absIdx]?.close ?? 0;
+
   // 평단 가로선: 보유 중일 때만 표시
   const avgCostLines = React.useMemo(() => {
     const lines: { price: number; source: "sim"|"mine"; label?: string }[] = [];
