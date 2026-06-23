@@ -1386,7 +1386,7 @@ function PrincipleSimulator({
     if (newTrade) setSimTrades(prev => [...prev, newTrade!]);
 
     // 1번: 수익 곡선 히스토리 업데이트
-    const curKrw2 = allCandles[gameStart + turn]?.close * exchRate ?? 0;
+    const curKrw2 = (allCandles[gameStart + turn]?.close ?? 0) * exchRate;
     const curAsset = nc + nh * curKrw2;
     setSimPnlHist(prev => [...prev, (curAsset / initCash - 1) * 100]);
 
