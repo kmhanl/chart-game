@@ -1189,7 +1189,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
 const MA240_PERIOD_SIM = 240;
 const WINDOW_SIM       = 60;
 
-function calcMA(candles: Candle[], idx: number, period: number): number | null {
+function calcMAat(candles: Candle[], idx: number, period: number): number | null {
   if (idx < period - 1) return null;
   let s = 0;
   for (let i = idx - period + 1; i <= idx; i++) s += candles[i].close;
@@ -1208,11 +1208,11 @@ interface SimTrade {
 function decidePrinciple(
   candles: Candle[], absIdx: number, holdings: number, cash: number, initCash: number, isQQQ: boolean
 ): { action: "매수" | "매도" | "관망"; reason: string; ratio: number } {
-  const ma5  = calcMA(candles, absIdx,   5);
-  const ma10 = calcMA(candles, absIdx,  10);
-  const ma240= calcMA(candles, absIdx, 240);
-  const pma5 = calcMA(candles, absIdx - 1,  5);
-  const pma10= calcMA(candles, absIdx - 1, 10);
+  const ma5  = calcMAat(candles, absIdx,   5);
+  const ma10 = calcMAat(candles, absIdx,  10);
+  const ma240= calcMAat(candles, absIdx, 240);
+  const pma5 = calcMAat(candles, absIdx - 1,  5);
+  const pma10= calcMAat(candles, absIdx - 1, 10);
   if (!ma10 || !ma5) return { action: "관망", reason: "이평선 계산 중", ratio: 0 };
 
   const price      = candles[absIdx].close;
@@ -1273,13 +1273,13 @@ function PrincipleSimulator({
   const chartSt  = Math.max(visible.length - WINDOW_SIM, 0);
   const chartC   = visible.slice(chartSt);
   const chartMa5:  (number|null)[] = chartC.map((_, i) => {
-    const ai = windowSt + chartSt + i; return calcMA(allCandles, ai, 5);
+    const ai = windowSt + chartSt + i; return calcMAat(allCandles, ai, 5);
   });
   const chartMa10: (number|null)[] = chartC.map((_, i) => {
-    const ai = windowSt + chartSt + i; return calcMA(allCandles, ai, 10);
+    const ai = windowSt + chartSt + i; return calcMAat(allCandles, ai, 10);
   });
   const chartMa240:(number|null)[] = chartC.map((_, i) => {
-    const ai = windowSt + chartSt + i; return calcMA(allCandles, ai, 240);
+    const ai = windowSt + chartSt + i; return calcMAat(allCandles, ai, 240);
   });
 
   // 매수/매도 마커
