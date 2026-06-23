@@ -789,76 +789,102 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
           </div>
 
           {/* 손익비 섹션 */}
-          {tradePnls.length > 0 && (
-            <div style={{ background: "#f8f9fa", borderRadius: 12, border: "1px solid #e9ecef", padding: "12px 14px", marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#212529", marginBottom: 10 }}>📐 손익비 분석</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                {/* 손익비 R */}
-                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>손익비</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: rMultiple >= 3 ? "#2f9e44" : rMultiple >= 1.5 ? "#f97316" : "#e03131" }}>
-                    {rMultiple >= 99 ? "∞" : rMultiple.toFixed(1) + "배"}
-                  </div>
-                  {/* 3배 기준 게이지 */}
-                  <div style={{ position: "relative", height: 5, background: "#e9ecef", borderRadius: 3, marginTop: 4 }}>
-                    <div style={{ width: `${Math.min(rMultiple / 3 * 100, 100)}%`, height: "100%", background: rMultiple >= 3 ? "#2f9e44" : rMultiple >= 1.5 ? "#f97316" : "#e03131", borderRadius: 3, transition: "width .4s" }} />
-                    {/* 3배 목표 기준선 */}
-                    <div style={{ position: "absolute", right: 0, top: -3, bottom: -3, width: 2, background: "#2f9e44", borderRadius: 1 }} />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, marginTop: 2 }}>
-                    <span style={{ color: "#adb5bd" }}>평균수익 / 평균손실</span>
-                    <span style={{ color: "#2f9e44", fontWeight: 600 }}>목표 3배</span>
-                  </div>
-                </div>
-                {/* 기대값 */}
-                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>거래당 기대값</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: expectancy >= 0 ? "#2f9e44" : "#e03131" }}>
-                    {expectancy >= 0 ? "+" : ""}{fmtKRW(Math.round(Math.abs(expectancy))).replace("원","")}{Math.abs(expectancy) >= 10000 ? "원" : "원"}
-                  </div>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 1 }}>
-                    {expectancy >= 0 ? "양의 기대값 — 전략 유효" : "음의 기대값 — 전략 재점검"}
-                  </div>
-                </div>
-                {/* 평균 수익 */}
-                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>평균 수익 ({wins.length}회)</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "#2f9e44" }}>
-                    {wins.length > 0 ? "+" + fmtKRW(Math.round(avgWin)) : "—"}
-                  </div>
-                  <div style={{ marginTop: 4, height: 3, background: "#e9ecef", borderRadius: 2 }}>
-                    <div style={{ width: `${Math.min(winRate * 100, 100)}%`, height: "100%", background: "#2f9e44", borderRadius: 2 }} />
-                  </div>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 2 }}>승률 {Math.round(winRate * 100)}%</div>
-                </div>
-                {/* 평균 손실 */}
-                <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>평균 손실 ({losses.length}회)</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "#e03131" }}>
-                    {losses.length > 0 ? "-" + fmtKRW(Math.round(avgLoss)) : "—"}
-                  </div>
-                  <div style={{ marginTop: 4, height: 3, background: "#e9ecef", borderRadius: 2 }}>
-                    <div style={{ width: `${Math.min((1 - winRate) * 100, 100)}%`, height: "100%", background: "#e03131", borderRadius: 2 }} />
-                  </div>
-                  <div style={{ fontSize: 10, color: "#adb5bd", marginTop: 2 }}>패율 {Math.round((1 - winRate) * 100)}%</div>
-                </div>
-              </div>
+          {tradePnls.length > 0 && (() => {
+            const isPositive = expectancy >= 0;
+            const accentClr  = isPositive ? "#2f9e44" : "#e03131";
+            const accentBg   = isPositive ? "#f0fdf4" : "#fff5f5";
+            const accentBdr  = isPositive ? "#bbf7d0" : "#fca5a5";
+            const winRatePct = Math.round(winRate * 100);
+            const losRatePct = 100 - winRatePct;
+            // 손익비 게이지 (3배 목표)
+            const rrPct = Math.min(rMultiple / 3 * 100, 100);
+            const rrClr = rMultiple >= 3 ? "#2f9e44" : rMultiple >= 1.5 ? "#f97316" : "#e03131";
+            // 케이스별 인사이트
+            const neededWinRate = rMultiple > 0 ? Math.round(1 / (1 + rMultiple) * 100) : 100;
+            const insightBg  = rMultiple >= 2 ? "#f0fdf4" : rMultiple >= 1 ? "#fff7ed" : "#fff5f5";
+            const insightClr = rMultiple >= 2 ? "#166534" : rMultiple >= 1 ? "#854f0b" : "#991b1b";
+            const insightBdr = rMultiple >= 2 ? "#bbf7d0" : rMultiple >= 1 ? "#fed7aa" : "#fca5a5";
+            const insightMsg = rMultiple >= 3
+              ? `✅ 손익비 ${rMultiple.toFixed(1)}배 + 승률 ${winRatePct}%로 전략이 유효합니다\n수익은 길게, 손실은 짧게 원칙 실천 중`
+              : rMultiple >= 1.5
+              ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 좋은 방향. 목표는 3배 이상입니다\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`
+              : rMultiple >= 1
+              ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 아직 부족. 수익을 더 길게 유지하세요\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`
+              : rMultiple === 0 && losses.length === 0
+              ? "📊 손절 없음 — 아직 확인된 손실 거래 없음"
+              : `❌ 기대값 음수 — 손익비(${rMultiple.toFixed(1)}배)는 나쁘지 않지만 승률(${winRatePct}%)이 너무 낮아 전략이 손해입니다\n손익비 ${rMultiple.toFixed(1)}배를 유지하려면 승률이 최소 ${neededWinRate}% 이상 필요`;
 
-              {/* 핵심 인사이트 */}
-              <div style={{ background: rMultiple >= 2 ? "#f0fdf4" : rMultiple >= 1 ? "#fff7ed" : "#fff5f5", borderRadius: 8, padding: "8px 12px", fontSize: 11, lineHeight: 1.6,
-                color: rMultiple >= 2 ? "#166534" : rMultiple >= 1 ? "#854f0b" : "#991b1b" }}>
-                {rMultiple >= 3
-                  ? `✅ 손익비 ${rMultiple.toFixed(1)}배 — 이상적! 수익은 길게, 손실은 짧게 실천 중`
-                  : rMultiple >= 1.5
-                  ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 좋은 방향. 목표는 3배 이상입니다`
-                  : rMultiple >= 1
-                  ? `⚠️ 손익비 ${rMultiple.toFixed(1)}배 — 아직 부족. 수익을 더 길게 유지하세요`
-                  : rMultiple === 0 && losses.length === 0
-                  ? "📊 손절 없음 — 아직 확인된 손실 거래 없음"
-                  : `❌ 손익비 ${rMultiple.toFixed(1)}배 — 손실이 수익보다 큼. 손절을 더 빠르게`}
+            return (
+              <div style={{ background: "#f8f9fa", borderRadius: 12, border: "1px solid #e9ecef", padding: "12px 14px", marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#212529", marginBottom: 10 }}>📐 손익비 분석</div>
+
+                {/* ① 기대값 — 전체 너비 */}
+                <div style={{ background: accentBg, borderRadius: 10, border: `1px solid ${accentBdr}`, padding: "12px 14px", marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: accentClr, opacity: 0.75, marginBottom: 2 }}>거래당 기대값</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: accentClr, lineHeight: 1.1, marginBottom: 3 }}>
+                    {expectancy >= 0 ? "+" : ""}{fmtKRW(Math.round(Math.abs(expectancy)))}
+                  </div>
+                  <div style={{ fontSize: 10, color: accentClr, opacity: 0.8 }}>
+                    {trades.filter(t => t.type === "매수").length}회 거래 기준 · 이 전략은 평균적으로 {isPositive ? "수익" : "손해"}
+                  </div>
+                </div>
+
+                {/* ② 손익비 + 승률 나란히 */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                  {/* 손익비 */}
+                  <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                    <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>손익비</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: rrClr, lineHeight: 1.1 }}>
+                      {rMultiple >= 99 ? "∞" : rMultiple.toFixed(1) + "배"}
+                    </div>
+                    <div style={{ position: "relative", height: 5, background: "#e9ecef", borderRadius: 3, marginTop: 6 }}>
+                      <div style={{ width: `${rrPct}%`, height: "100%", background: rrClr, borderRadius: 3, transition: "width .4s" }} />
+                      <div style={{ position: "absolute", right: 0, top: -3, bottom: -3, width: 2, background: "#2f9e44", borderRadius: 1 }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, marginTop: 2 }}>
+                      <span style={{ color: "#adb5bd" }}>평균수익/평균손실</span>
+                      <span style={{ color: "#2f9e44", fontWeight: 600 }}>목표 3배</span>
+                    </div>
+                  </div>
+
+                  {/* 승률 */}
+                  <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                    <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>승률</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: winRatePct >= 50 ? "#2f9e44" : "#e03131", lineHeight: 1.1 }}>
+                      {winRatePct}%
+                    </div>
+                    <div style={{ position: "relative", height: 5, background: "#e9ecef", borderRadius: 3, marginTop: 6 }}>
+                      <div style={{ width: `${winRatePct}%`, height: "100%", background: winRatePct >= 50 ? "#2f9e44" : "#e03131", borderRadius: 3, transition: "width .4s" }} />
+                    </div>
+                    <div style={{ fontSize: 9, color: "#adb5bd", marginTop: 2 }}>
+                      {wins.length}승 {losses.length}패 / {wins.length + losses.length}회
+                    </div>
+                  </div>
+                </div>
+
+                {/* ③ 평균 수익 + 평균 손실 나란히 */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                  <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                    <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>평균 수익 ({wins.length}회)</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#2f9e44" }}>
+                      {wins.length > 0 ? "+" + fmtKRW(Math.round(avgWin)) : "—"}
+                    </div>
+                  </div>
+                  <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", border: "1px solid #e9ecef" }}>
+                    <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 2 }}>평균 손실 ({losses.length}회)</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#e03131" }}>
+                      {losses.length > 0 ? "-" + fmtKRW(Math.round(avgLoss)) : "—"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ④ 인사이트 */}
+                <div style={{ background: insightBg, borderRadius: 8, padding: "9px 12px", fontSize: 11, lineHeight: 1.7, color: insightClr, border: `1px solid ${insightBdr}`, whiteSpace: "pre-line" }}>
+                  {insightMsg}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
           <div style={{ marginBottom: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
               <span style={{ color: "#495057", fontWeight: 600 }}>📊 추세추종 원칙 준수율</span>
