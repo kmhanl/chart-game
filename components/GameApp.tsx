@@ -1997,7 +1997,7 @@ function PrincipleSimulator({
               </div>
               <div style={{ padding:"8px 12px", background: diff>=0?"#f0fdf4":"#fff7ed", borderRadius:8, border:`1px solid ${diff>=0?"#bbf7d0":"#fed7aa"}`, textAlign:"center" }}>
                 <span style={{ fontSize:13, fontWeight:800, color: diff>=0?C2.green:"#e65100" }}>
-                  {diff>=0 ? `원칙대로 했다면 ${diff.toFixed(1)}%p 더 벌었습니다` : `이번엔 내 판단이 ${Math.abs(diff).toFixed(1)}%p 앞섰습니다 🎉`}
+                  {diff>=0 ? (simFinalPnl >= 0 ? `원칙대로 했다면 ${diff.toFixed(1)}%p 더 벌었습니다` : `원칙대로 했다면 ${diff.toFixed(1)}%p 덜 잃었습니다`) : `이번엔 내 판단이 ${Math.abs(diff).toFixed(1)}%p 앞섰습니다 🎉`}
                 </span>
               </div>
             </div>
