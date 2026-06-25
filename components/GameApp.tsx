@@ -546,87 +546,116 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
 
 function VolumeChart({ candles, width = 700, height = 48, interval = "1wk", vol20Avg = 0, highlightLast = false }: { candles: Candle[]; width?: number; height?: number; interval?: string; vol20Avg?: number; highlightLast?: boolean; }) {
   if (!candles.length) return null;
-  const LABEL_H = 14;
-  const PAD = { l: 10, r: 66, t: 2, b: LABEL_H };
-  const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b;
-  const n = candles.length, maxV = Math.max(...candles.map(c => c.vol), 1), cw = Math.max(2, (W / n) * 0.7);
-  const sx = (i: number) => PAD.l + (i / Math.max(n - 1, 1)) * W;
 
-  // 20봉 평균 기준선 y좌표
-  const avgLineY = vol20Avg > 0 ? PAD.t + H - (vol20Avg / maxV) * H : null;
-  // 150% 기준선 y좌표
+  // B안: 바 차트 + 하단 게이지
+  // 바 차트 영역 / 연도 레이블 / 하단 게이지 영역 분리
+  const GAUGE_H  = highlightLast && vol20Avg > 0 ? 14 : 0; // 게이지 높이
+  const LABEL_H  = 10; // 연도 레이블
+  const PAD      = { l: 10, r: 66, t: 2, b: LABEL_H + GAUGE_H };
+  const totalH   = height + GAUGE_H;
+  const W        = width - PAD.l - PAD.r;
+  const H        = totalH - PAD.t - PAD.b;
+  const n        = candles.length;
+  const maxV     = Math.max(...candles.map(c => c.vol), 1);
+  const cw       = Math.max(2, (W / n) * 0.7);
+  const sx       = (i: number) => PAD.l + (i / Math.max(n - 1, 1)) * W;
+
+  const lastIdx   = n - 1;
+  const lastVol   = candles[lastIdx]?.vol ?? 0;
+  const lastRatio = vol20Avg > 0 ? lastVol / vol20Avg : 0;
+  const lastPct   = Math.round(lastRatio * 100);
+  const lastSurge = lastRatio >= 1.5;
+
+  // 게이지 색상 (구간별)
+  const gaugeColor = lastRatio >= 2.0 ? "#1971c2"
+    : lastRatio >= 1.5 ? "#2f9e44"
+    : lastRatio >= 1.0 ? "#f97316"
+    : "#e03131";
+
+  // 기준선 y좌표
+  const avgLineY   = vol20Avg > 0 ? PAD.t + H - (vol20Avg / maxV) * H : null;
   const surgeLineY = vol20Avg > 0 ? PAD.t + H - (vol20Avg * 1.5 / maxV) * H : null;
 
-  // 연도 레이블: 주봉은 1월 첫 주, 월봉은 1월
+  // 연도 레이블
   const yearLabels: { x: number; year: number }[] = [];
   let lastYear = -1;
   candles.forEach((c, i) => {
-    const d = c.date;
-    const yr = d.getFullYear();
-    const mo = d.getMonth();
+    const d = c.date, yr = d.getFullYear(), mo = d.getMonth();
     const isYearStart = interval === "1mo" ? mo === 0 : (mo === 0 && d.getDate() <= 14);
-    if (isYearStart && yr !== lastYear) {
-      yearLabels.push({ x: sx(i), year: yr });
-      lastYear = yr;
-    }
+    if (isYearStart && yr !== lastYear) { yearLabels.push({ x: sx(i), year: yr }); lastYear = yr; }
   });
 
-  const lastIdx = n - 1;
-  const lastVol = candles[lastIdx]?.vol ?? 0;
-  const lastRatio = vol20Avg > 0 ? lastVol / vol20Avg : 0;
-  const lastSurge = lastRatio >= 1.5;
+  // 게이지 y 시작 (바 + 연도 레이블 아래)
+  const gaugeY = totalH - GAUGE_H + 1;
+  // 게이지 내 마커 x = 0~250% 범위에서 선형 매핑
+  const gaugeX    = (pct: number) => PAD.l + Math.min(pct / 250, 1) * W;
+  const markerX   = gaugeX(lastPct);
+  const surge150X = gaugeX(150);
 
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
-      {/* 거래량 바 */}
+    <svg width="100%" viewBox={`0 0 ${width} ${totalH}`} style={{ display: "block" }}>
+      {/* ── 거래량 바 */}
       {candles.map((c, i) => {
         const x = sx(i), bH = (c.vol / maxV) * H;
         const isLast = highlightLast && i === lastIdx;
-        let fill: string;
-        if (isLast) {
-          fill = lastSurge ? "#2f9e44cc" : "#e03131cc"; // 초록=충족, 빨강=미달
-        } else {
-          fill = c.close >= c.open ? "#e0313155" : "#1971c255";
-        }
+        const fill = isLast
+          ? (lastSurge ? "#2f9e44bb" : lastRatio >= 1.0 ? "#f97316bb" : "#e03131bb")
+          : (c.close >= c.open ? "#e0313144" : "#1971c244");
         return (
           <rect key={i} x={x - cw / 2} y={PAD.t + H - bH} width={cw} height={bH}
             fill={fill}
-            stroke={isLast ? (lastSurge ? "#2f9e44" : "#e03131") : "none"}
+            stroke={isLast ? gaugeColor : "none"}
             strokeWidth={isLast ? 1 : 0}
           />
         );
       })}
-      {/* 20봉 평균 기준선 (점선, 회색) */}
+      {/* 현재봉 % 텍스트 (바 위) */}
+      {highlightLast && vol20Avg > 0 && (() => {
+        const x   = sx(lastIdx);
+        const bH  = (lastVol / maxV) * H;
+        const lY  = PAD.t + H - bH - 2;
+        return lY > PAD.t + 6
+          ? <text x={x} y={lY} fontSize="7" fill={gaugeColor} textAnchor="middle" fontWeight="bold">{lastPct}%</text>
+          : null;
+      })()}
+      {/* 평균 기준선 (회색 점선) */}
       {avgLineY !== null && avgLineY > PAD.t && avgLineY < PAD.t + H && (
-        <line x1={PAD.l} y1={avgLineY} x2={PAD.l + W} y2={avgLineY}
-          stroke="#adb5bd" strokeWidth="0.8" strokeDasharray="3 3" />
+        <line x1={PAD.l} y1={avgLineY} x2={PAD.l + W} y2={avgLineY} stroke="#adb5bd" strokeWidth="0.8" strokeDasharray="3 3" />
       )}
-      {/* 150% 돌파 기준선 (점선, 보라) */}
+      {/* 150% 기준선 (보라 점선) */}
       {surgeLineY !== null && surgeLineY > PAD.t && surgeLineY < PAD.t + H && (
         <>
-          <line x1={PAD.l} y1={surgeLineY} x2={PAD.l + W} y2={surgeLineY}
-            stroke="#7048e8" strokeWidth="0.8" strokeDasharray="3 3" />
+          <line x1={PAD.l} y1={surgeLineY} x2={PAD.l + W} y2={surgeLineY} stroke="#7048e8" strokeWidth="0.8" strokeDasharray="3 3" />
           <text x={PAD.l + W + 3} y={surgeLineY + 3} fontSize="7" fill="#7048e8">150%</text>
         </>
       )}
-      {/* 현재 봉 거래량 비율 텍스트 */}
-      {highlightLast && vol20Avg > 0 && (() => {
-        const x = sx(lastIdx);
-        const bH = (lastVol / maxV) * H;
-        const labelY = PAD.t + H - bH - 2;
-        return labelY > PAD.t + 6 ? (
-          <text x={x} y={labelY} fontSize="7" fill={lastSurge ? "#2f9e44" : "#e03131"} textAnchor="middle" fontWeight="bold">
-            {Math.round(lastRatio * 100)}%
-          </text>
-        ) : null;
-      })()}
       {/* 연도 레이블 */}
       {yearLabels.map(({ x, year }) => (
         <g key={year}>
           <line x1={x} y1={PAD.t} x2={x} y2={PAD.t + H} stroke="#dee2e6" strokeWidth="0.5" strokeDasharray="2 2" />
-          <text x={x + 2} y={height - 2} fontSize="8" fill="#adb5bd">{year}</text>
+          <text x={x + 2} y={PAD.t + H + LABEL_H - 2} fontSize="8" fill="#adb5bd">{year}</text>
         </g>
       ))}
+
+      {/* ── B안: 하단 게이지 */}
+      {highlightLast && vol20Avg > 0 && (
+        <g>
+          {/* 게이지 트랙 배경 (구간별 색) */}
+          <rect x={PAD.l}           y={gaugeY}     width={Math.max(0,surge150X - PAD.l)} height={5} fill="#fca5a555" rx="2"/>
+          <rect x={surge150X}       y={gaugeY}     width={Math.max(0,PAD.l + W - surge150X)} height={5} fill="#86efac55" rx="2"/>
+          {/* 게이지 테두리 */}
+          <rect x={PAD.l} y={gaugeY} width={W} height={5} fill="none" stroke="#dee2e6" strokeWidth="0.5" rx="2"/>
+          {/* 150% 기준 수직선 */}
+          <line x1={surge150X} y1={gaugeY - 1} x2={surge150X} y2={gaugeY + 6} stroke="#7048e8" strokeWidth="1.5"/>
+          {/* 현재 위치 마커 */}
+          <rect x={markerX - 1.5} y={gaugeY - 2} width={3} height={9} fill={gaugeColor} rx="1"/>
+          {/* 구간 텍스트 */}
+          <text x={PAD.l + 2}    y={gaugeY + 12} fontSize="7" fill="#e03131">~150%</text>
+          <text x={surge150X + 3} y={gaugeY + 12} fontSize="7" fill="#2f9e44">150%↑ 돌파</text>
+          {/* 현재 % 라벨 */}
+          <text x={PAD.l + W + 3} y={gaugeY + 10} fontSize="8" fill={gaugeColor} fontWeight="bold">{lastPct}%</text>
+        </g>
+      )}
     </svg>
   );
 }
@@ -2579,7 +2608,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
             </div>
           </div>
           <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" />
-          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={36} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
+          <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={40} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
         </div>
       </div>
 
