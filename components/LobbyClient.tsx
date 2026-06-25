@@ -335,6 +335,10 @@ export default function LobbyClient({ user }: Props) {
   const [showUniverse,    setShowUniverse]    = useState(false);
   const [universeMarket,  setUniverseMarket]  = useState<"KOSPI" | "QQQ">("KOSPI");
 
+  // ④ 다음 게임 목표 + ⑤ 산점도 데이터 (localStorage)
+  const [nextGoal,     setNextGoal]     = useState<{ text: string; tag: string; createdAt: string } | null>(null);
+  const [scatterData,  setScatterData]  = useState<{ pnl: number; followScore: number }[]>([]);
+
   // C안: 종목 통계 탭
   const [showStats, setShowStats] = useState(false);
 
@@ -380,6 +384,18 @@ export default function LobbyClient({ user }: Props) {
       setLoadingAsset(false);
     };
     fetchData();
+  }, []);
+
+  // localStorage에서 nextGoal + scatterData 로드
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("chartgame_stats_v2");
+      if (raw) {
+        const stats = JSON.parse(raw);
+        if (stats.nextGoal) setNextGoal(stats.nextGoal);
+        if (stats.scatterData) setScatterData(stats.scatterData);
+      }
+    } catch { /* ignore */ }
   }, []);
 
   const handleStartGame = async (market: "KOSPI" | "QQQ") => {
@@ -555,6 +571,96 @@ export default function LobbyClient({ user }: Props) {
           })}
         </div>
       </div>
+
+      {/* ④ 다음 게임 목표 */}
+      {nextGoal && (
+        <div style={{ width: "100%", maxWidth: 480, marginBottom: 14,
+          background: "#f3f0ff", border: "1px solid #d0bfff", borderRadius: 12, padding: "12px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <span style={{ fontSize: 14 }}>🎯</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.accent }}>다음 게임 목표</span>
+            <span style={{ fontSize: 10, background: C.accent, color: "#fff", borderRadius: 4, padding: "1px 6px", marginLeft: "auto" }}>이전 복기 기반</span>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+            "{nextGoal.text}"
+          </div>
+          <div style={{ display: "flex", gap: 5 }}>
+            <span style={{ fontSize: 10, background: "#fff", color: C.accent, border: `1px solid ${C.accent}33`, borderRadius: 4, padding: "2px 8px" }}>
+              #{nextGoal.tag}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ⑤ 산점도 — 3게임 이상일 때만 표시 */}
+      {scatterData.length >= 3 && (
+        <div style={{ width: "100%", maxWidth: 480, marginBottom: 14,
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            📈 원칙 준수율 vs 수익률
+            <span style={{ fontSize: 10, fontWeight: 400, color: C.muted, marginLeft: 6 }}>{scatterData.length}게임 누적</span>
+          </div>
+          <svg width="100%" viewBox="0 0 280 160" style={{ display: "block" }}>
+            {/* 배경 그리드 */}
+            <line x1="30" y1="10" x2="30" y2="130" stroke="#dee2e6" strokeWidth="0.5"/>
+            <line x1="30" y1="130" x2="270" y2="130" stroke="#dee2e6" strokeWidth="0.5"/>
+            <line x1="30" y1="70" x2="270" y2="70" stroke="#dee2e6" strokeWidth="0.5" strokeDasharray="3 3"/>
+            <line x1="150" y1="10" x2="150" y2="130" stroke="#dee2e6" strokeWidth="0.5" strokeDasharray="3 3"/>
+            {/* 축 레이블 */}
+            <text x="150" y="148" fontSize="9" fill="#adb5bd" textAnchor="middle">원칙 준수율 →</text>
+            <text x="8" y="70" fontSize="9" fill="#adb5bd" textAnchor="middle" transform="rotate(-90,8,70)">수익률</text>
+            <text x="30" y="144" fontSize="8" fill="#adb5bd" textAnchor="middle">0%</text>
+            <text x="150" y="144" fontSize="8" fill="#adb5bd" textAnchor="middle">50%</text>
+            <text x="270" y="144" fontSize="8" fill="#adb5bd" textAnchor="middle">100%</text>
+            <text x="25" y="133" fontSize="8" fill="#adb5bd" textAnchor="end">-</text>
+            <text x="25" y="73" fontSize="8" fill="#adb5bd" textAnchor="end">0</text>
+            <text x="25" y="13" fontSize="8" fill="#adb5bd" textAnchor="end">+</text>
+            {/* 추세선 계산 */}
+            {(() => {
+              const n = scatterData.length;
+              if (n < 2) return null;
+              const xs = scatterData.map(d => 30 + (d.followScore / 100) * 240);
+              const ys = scatterData.map(d => 70 - Math.max(-60, Math.min(60, d.pnl * 8)));
+              const mx = xs.reduce((a,b)=>a+b,0)/n, my = ys.reduce((a,b)=>a+b,0)/n;
+              const num = xs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0);
+              const den = xs.reduce((s,x)=>s+(x-mx)**2,0);
+              if (den === 0) return null;
+              const slope = num/den, intercept = my - slope*mx;
+              const x1=30, y1=slope*x1+intercept, x2=270, y2=slope*x2+intercept;
+              return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#2f9e44" strokeWidth="1" strokeDasharray="4 3" opacity="0.6"/>;
+            })()}
+            {/* 데이터 포인트 */}
+            {scatterData.map((d, i) => {
+              const cx = 30 + (d.followScore / 100) * 240;
+              const cy = 70 - Math.max(-60, Math.min(60, d.pnl * 8));
+              const col = d.followScore >= 60 ? "#2f9e44" : d.followScore >= 40 ? "#f97316" : "#e03131";
+              const isLast = i === scatterData.length - 1;
+              return (
+                <g key={i}>
+                  {isLast && <circle cx={cx} cy={cy} r={7} fill="none" stroke="#7048e8" strokeWidth="1.5"/>}
+                  <circle cx={cx} cy={cy} r={4} fill={col} opacity={0.8}/>
+                </g>
+              );
+            })}
+          </svg>
+          {/* 인사이트 */}
+          {(() => {
+            const highScore = scatterData.filter(d => d.followScore >= 60);
+            const lowScore  = scatterData.filter(d => d.followScore < 60);
+            const avgH = highScore.length ? highScore.reduce((s,d)=>s+d.pnl,0)/highScore.length : null;
+            const avgL = lowScore.length  ? lowScore.reduce((s,d)=>s+d.pnl,0)/lowScore.length  : null;
+            if (avgH === null || avgL === null) return null;
+            return (
+              <div style={{ marginTop: 6, fontSize: 10, color: C.sub, lineHeight: 1.6 }}>
+                원칙 준수율 60% 이상 게임 평균 수익률
+                <span style={{ fontWeight: 700, color: avgH >= 0 ? "#2f9e44" : "#e03131" }}> {avgH >= 0 ? "+" : ""}{avgH.toFixed(1)}%</span>
+                {" / "} 60% 미만
+                <span style={{ fontWeight: 700, color: avgL >= 0 ? "#2f9e44" : "#e03131" }}> {avgL >= 0 ? "+" : ""}{avgL.toFixed(1)}%</span>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* 게임 시작 버튼 */}
       <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>

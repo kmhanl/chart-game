@@ -698,6 +698,42 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
   const [selectedTurn, setSelectedTurn] = React.useState<number | null>(null);
   const [showSim,      setShowSim]      = React.useState(false);
 
+  // ③ 핵심 실수 3턴 자동 선별 (점수 낮은 순, 채점된 턴만)
+  const worstTurns = React.useMemo(() => {
+    return turnScores
+      .map((ts, i) => ({ i, ts }))
+      .filter(({ ts }) => ts.maxScore > 0 && ts.score / ts.maxScore < 0.5)
+      .sort((a, b) => (a.ts.score / a.ts.maxScore) - (b.ts.score / b.ts.maxScore))
+      .slice(0, 3);
+  }, [turnScores]);
+
+  // ① 최선의 행동 도출 함수
+  const getBestAction = (ts: TurnScore): { action: string; reason: string } => {
+    const reasons = (ts as TurnScore & { reasons?: Reason[] }).reasons ?? [];
+    const diag = (ts as TurnScore & { diagnosis?: Diagnosis | null }).diagnosis;
+    const hasBadBuy = reasons.some(r => r.ok === false && r.text.includes("매수"));
+    const hasBadSell = reasons.some(r => r.ok === false && r.text.includes("매도"));
+    const isHold = ts.action === "hold";
+
+    if (hasBadBuy) {
+      const isBelow10 = reasons.some(r => r.text.includes("10MA 아래 매수"));
+      const isLowVol  = reasons.some(r => r.text.includes("거래량 미확인"));
+      const isMassive = reasons.some(r => r.text.includes("대량 매도 출현"));
+      if (isMassive) return { action: "관망", reason: "대량 음봉 출현 — 세력 이탈 신호" };
+      if (isBelow10) return { action: "관망", reason: "10MA 회복 확인 후 재진입 대기" };
+      if (isLowVol)  return { action: "관망", reason: "거래량 150% 이상 확인 후 매수" };
+      return { action: "관망", reason: diag?.suggestion ?? "추세 확인 후 진입" };
+    }
+    if (hasBadSell) {
+      return { action: "보유", reason: "5MA·10MA 위 상승 추세 — 비중 유지" };
+    }
+    if (isHold) {
+      const isMissed = reasons.some(r => r.text.includes("미보유 관망"));
+      if (isMissed) return { action: "매수", reason: diag?.buyReason ?? "상승 추세 매수 기회" };
+    }
+    return { action: "현재 행동", reason: "최선의 선택이었습니다" };
+  };
+
   const pnl = ((totalAsset / initCash) - 1) * 100;
   // maxScore > 0인 턴만 채점 (보유 중 관망 제외)
   const scoredTurns   = turnScores.filter(t => t.maxScore > 0);
@@ -1054,6 +1090,43 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
             </div>
           )}
 
+          {/* ③ 핵심 실수 3턴 자동 선별 */}
+          {worstTurns.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#212529", marginBottom: 8 }}>⚠️ 이번 게임 핵심 복기</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {worstTurns.map(({ i, ts }) => {
+                  const trade = trades.find(t => t.turn === i);
+                  const reasons = (ts as TurnScore & { reasons?: Reason[] }).reasons ?? [];
+                  const topBad = reasons.find(r => r.ok === false);
+                  const pct = ts.maxScore > 0 ? Math.round(ts.score / ts.maxScore * 100) : 0;
+                  const best = getBestAction(ts);
+                  return (
+                    <button key={i} onClick={() => setSelectedTurn(selectedTurn === i ? null : i)} style={{
+                      textAlign: "left", background: "#fff", border: "1px solid #fca5a5",
+                      borderLeft: "3px solid #e03131", borderRadius: "0 8px 8px 0",
+                      padding: "8px 12px", cursor: "pointer", fontFamily: "inherit", width: "100%",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#212529" }}>
+                          {i + 1}턴 {trade ? (trade.type === "매수" ? "▲ 매수" : "▼ 매도") : "관망"}
+                          {allCandles[gameStart + i]?.date ? ` — ${fmtDate(allCandles[gameStart + i].date)}` : ""}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#e03131" }}>{pct}%</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "#991b1b", marginBottom: 3 }}>
+                        {topBad?.text ?? "원칙 미준수"}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#2f9e44" }}>
+                        → 최선: {best.action} — {best.reason}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* C안: 턴별 복기 */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#212529", marginBottom: 8 }}>🔍 턴별 복기</div>
@@ -1168,6 +1241,33 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
                           💬 {(selectedTurnScore as TurnScore & { diagnosis?: Diagnosis | null }).diagnosis?.buyReason}
                         </div>
                       )}
+
+                      {/* ① 최선의 행동 vs 실제 행동 비교 */}
+                      {(() => {
+                        const best = getBestAction(selectedTurnScore);
+                        const actionLabel = selectedTurnScore.action === "buy" ? "매수" : selectedTurnScore.action === "sell" ? "매도" : "관망";
+                        const isGood = best.action === "현재 행동" || best.action === actionLabel;
+                        if (isGood) return (
+                          <div style={{ marginTop:8, padding:"7px 10px", background:"#f0fdf4", borderRadius:8, fontSize:11, color:"#166534", lineHeight:1.6 }}>
+                            ✅ 최선의 행동 — {best.reason}
+                          </div>
+                        );
+                        return (
+                          <div style={{ marginTop:8, display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                            <div style={{ padding:"8px 10px", background:"#fff5f5", border:"0.5px solid #fca5a5", borderRadius:8 }}>
+                              <div style={{ fontSize:9, color:"#e03131", marginBottom:2 }}>내 행동</div>
+                              <div style={{ fontSize:13, fontWeight:700, color:"#e03131" }}>{actionLabel}</div>
+                            </div>
+                            <div style={{ padding:"8px 10px", background:"#f0fdf4", border:"0.5px solid #86efac", borderRadius:8 }}>
+                              <div style={{ fontSize:9, color:"#2f9e44", marginBottom:2 }}>최선의 행동</div>
+                              <div style={{ fontSize:13, fontWeight:700, color:"#2f9e44" }}>{best.action}</div>
+                            </div>
+                            <div style={{ gridColumn:"1/3", padding:"7px 10px", background:"#f8f9fa", borderRadius:8, fontSize:10, color:"#495057", lineHeight:1.6 }}>
+                              💡 {best.reason}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
@@ -1947,12 +2047,14 @@ function PrincipleSimulator({
 // ══════════════════════════════════════════════════════════════════════════════
 // 📊 누적 통계 유틸 (localStorage)
 // ══════════════════════════════════════════════════════════════════════════════
-const STATS_KEY = "chartgame_stats_v1";
+const STATS_KEY = "chartgame_stats_v2";
 interface GameStats {
   totalGames: number;
   totalPnl:   number;
   winGames:   number;
   entryPatterns: Record<string, { count: number; wins: number; pnlSum: number }>;
+  nextGoal?: { text: string; tag: string; createdAt: string };
+  scatterData?: { pnl: number; followScore: number }[];
 }
 function loadStats(): GameStats {
   try {
@@ -1985,6 +2087,22 @@ function appendGameToStats(pnlPct: number, trades: Trade[]): GameStats {
   });
   saveStats(stats);
   return stats;
+}
+
+// ④ 다음 게임 목표 저장
+function saveNextGoal(goal: { text: string; tag: string }) {
+  const stats = loadStats();
+  stats.nextGoal = { ...goal, createdAt: new Date().toISOString() };
+  saveStats(stats);
+}
+
+// ⑤ 산점도 데이터 추가
+function appendScatterPoint(pnl: number, followScore: number) {
+  const stats = loadStats();
+  if (!stats.scatterData) stats.scatterData = [];
+  stats.scatterData.push({ pnl, followScore });
+  if (stats.scatterData.length > 50) stats.scatterData = stats.scatterData.slice(-50);
+  saveStats(stats);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2344,6 +2462,24 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 		const _finalPnl = ((totalAsset / INIT_CASH) - 1) * 100;
 		const _updStats = appendGameToStats(_finalPnl, trades);
 		setGameStats(_updStats);
+		// ⑤ 산점도 데이터 추가
+		appendScatterPoint(_finalPnl, followScore);
+		// ④ 다음 게임 목표 자동 생성 (가장 많이 틀린 패턴 기반)
+		const _patterns = Object.entries(_updStats.entryPatterns)
+		  .filter(([,v]) => v.count >= 1)
+		  .sort(([,a],[,b]) => (a.wins/a.count) - (b.wins/b.count));
+		if (_patterns.length > 0) {
+		  const [worstKey] = _patterns[0];
+		  const goalMap: Record<string, { text: string; tag: string }> = {
+		    "골든크로스":     { text: "골든크로스 발생 시 거래량 150% 이상 확인 후 매수", tag: "거래량 확인" },
+		    "10MA아래진입":   { text: "10MA 회복 확인 후에만 매수 진입", tag: "10MA 필터" },
+		    "과열구간진입":   { text: "10MA 이격 5% 이상 구간 매수 자제", tag: "과열 주의" },
+		    "눌림목진입":     { text: "눌림목 진입 시 거래량 감소 필수 확인", tag: "눌림목" },
+		    "10MA위진입":     { text: "상승 추세 중 매수 후 비중 유지 연습", tag: "비중 유지" },
+		  };
+		  const goal = goalMap[worstKey] ?? { text: "추세 원칙 복습 후 재도전", tag: "원칙 복습" };
+		  saveNextGoal(goal);
+		}
 		onGameEnd({
 		  trades,
 		  turnScores: latestScores,
