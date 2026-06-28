@@ -2230,11 +2230,20 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const [scoreModal,   setScoreModal]  = useState<TurnScore | null>(null);
   const [showResult,   setShowResult]  = useState(false);
   const [diagOpen,     setDiagOpen]    = useState(false);
+  const [banner,       setBanner]      = useState<{ text: string; color: string; bg: string; border: string } | null>(null);
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastGameAsset, setLastGameAsset] = useState<number>(INIT_CASH);
   const [gameStats,     setGameStats]     = useState<GameStats>(() => loadStats());
   const modalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const WINDOW = 36;
+
+  // ── 원칙 배너 표시 (3초 후 자동 사라짐, 탭하면 진단 시트 열림)
+  const showBanner = (text: string, color: string, bg: string, border: string) => {
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    setBanner({ text, color, bg, border });
+    bannerTimer.current = setTimeout(() => setBanner(null), 3500);
+  };
 
   const startGame = async (mkt: "KOSPI" | "QQQ", itv = intervalMode, ms = mission, nextCash?: number) => {
     const isQ = mkt === "QQQ";
@@ -2521,6 +2530,27 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 		});
 		return;
 	  }
+	  // ── 원칙 배너 트리거 (다음 턴으로 넘어가기 전 신호 감지)
+	  if (goldenCross && volSurge) {
+	    showBanner("✅ 골든크로스 + 거래량 확인 — 분할 매수 적기", "#166534", "#f0fdf4", "#86efac");
+	  } else if (goldenCross && !volSurge) {
+	    showBanner("⚠️ 골든크로스 발생 — 거래량 부족 (150% 필요), 눌림 후 재진입 검토", "#854f0b", "#fff7ed", "#fed7aa");
+	  } else if (deadCross) {
+	    showBanner("🚨 데드크로스 — 10MA 이탈 시 손절 또는 전량 매도 검토", "#991b1b", "#fff5f5", "#fca5a5");
+	  } else if (isBreakAbove5MA) {
+	    showBanner("🚨 급등 후 5MA 이탈 — 전량 매도 권고", "#991b1b", "#fff5f5", "#fca5a5");
+	  } else if (volMassiveSell) {
+	    showBanner("⚠️ 대량 매도 출현 — 세력 이탈 가능성, 비중 축소 검토", "#854f0b", "#fff7ed", "#fed7aa");
+	  } else if (volShrink) {
+	    showBanner("💤 거래량 수축 — 큰 변동 임박, 돌파 방향 확인 후 진입", "#534AB7", "#f3f0ff", "#d0bfff");
+	  } else if (threeBarPattern?.type === "양음양" && threeBarPattern.strong) {
+	    showBanner("🕯️ 양음양 돌파 — 전고점 돌파, 강한 매수 신호", "#166534", "#f0fdf4", "#86efac");
+	  } else if (!above240 && above10 === false) {
+	    showBanner("📉 240MA + 10MA 아래 — 하락 추세 구간, 매수 자제", "#1e40af", "#eff6ff", "#bfdbfe");
+	  } else {
+	    setBanner(null);
+	  }
+
 	  setCurIdx(i => i + 1);
 	  setTurn(t => t + 1);
 	};
@@ -2573,6 +2603,22 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           </div>
         </div>
       </div>
+
+      {/* 원칙 배너 (B안) */}
+      {banner && (
+        <div
+          onClick={() => { setBanner(null); setDiagOpen(true); }}
+          style={{
+            background: banner.bg, borderBottom: `1px solid ${banner.border}`,
+            padding: "7px 12px", display: "flex", alignItems: "center", gap: 8,
+            flexShrink: 0, cursor: "pointer",
+            animation: "fadeInScale .2s ease",
+          }}
+        >
+          <span style={{ fontSize: 12, color: banner.color, fontWeight: 700, lineHeight: 1.4, flex: 1 }}>{banner.text}</span>
+          <span style={{ fontSize: 10, color: banner.color, opacity: 0.7, flexShrink: 0 }}>진단 ›</span>
+        </div>
+      )}
 
       {/* 자산 요약 */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "3px 8px", display: "flex", gap: 6, flexWrap: "nowrap", overflowX: "hidden", flexShrink: 0 }}>
