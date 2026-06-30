@@ -2706,13 +2706,13 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     bannerTimer.current = setTimeout(() => setBanner(null), 3500);
   };
 
-  const startGame = async (mkt: "KOSPI" | "QQQ", itv = intervalMode, ms = mission, nextCash?: number, forceTicker?: string | null, forceTickerName?: string | null) => {
-    const useCustom = !!forceTicker;
-    const isQ = useCustom ? !forceTicker!.includes(".KS") : mkt === "QQQ";
+  const startGame = async (mkt: string, itv = intervalMode, ms = mission, nextCash?: number, forceTicker?: string | null, forceTickerName?: string | null) => {
+    const useCustom = !!forceTicker || mkt === "CUSTOM";
+    const isQ = useCustom ? !!(forceTicker && !forceTicker.includes(".KS")) : mkt === "QQQ";
     setLoadErr(""); setScreen("loading");
     const shuffled = useCustom
-      ? [{ name: forceTickerName ?? forceTicker!, ticker: forceTicker! }]
-      : [...UNIVERSE[mkt]].sort(() => Math.random() - 0.5);
+      ? (forceTicker ? [{ name: forceTickerName ?? forceTicker, ticker: forceTicker }] : [{ name: stockMeta?.name ?? "", ticker: stockMeta?.ticker ?? "" }])
+      : [...UNIVERSE[mkt as "KOSPI" | "QQQ"]].sort(() => Math.random() - 0.5);
     for (const candidate of shuffled) {
       try {
         const candles = await fetchCandles(candidate.ticker, itv);
