@@ -222,6 +222,307 @@ function analyzeCandleState(c: Candle | null) {
     : { label: "음봉", color: "#1971c2", bg: "#e7f5ff", icon: "🔵", desc: "매도 우세" };
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 전황 보기 — 거래량을 병력 규모로 시각화한 전투 애니메이션
+// ══════════════════════════════════════════════════════════════════════════════
+function BattleModal({ candles, vol20Avg, holdings, above5, above10, onClose, onGoDiag, onGoSell }: {
+  candles: Candle[]; vol20Avg: number;
+  holdings: number; above5: boolean | null; above10: boolean | null;
+  onClose: () => void; onGoDiag: () => void; onGoSell: () => void;
+}) {
+  const N = Math.min(10, candles.length);
+  const recent = candles.slice(-N);
+
+  // 거래량 비율 + 가격변화율 + 3봉 패턴(양음양/음양음) 위치 사전 계산
+  const battles = recent.map((c, i, arr) => {
+    const ratio = vol20Avg > 0 ? c.vol / vol20Avg : 1;
+    const pct = c.open > 0 ? ((c.close - c.open) / c.open) * 100 : 0;
+    const up = c.close >= c.open;
+    let patRole: "start" | "mid" | "end" | null = null;
+    if (i >= 2) {
+      const c1 = arr[i - 2], c2 = arr[i - 1], c3 = arr[i];
+      const up1 = c1.close >= c1.open, up2 = c2.close >= c2.open, up3 = c3.close >= c3.open;
+      if (up1 && !up2 && up3) {
+        if (i - 2 === 0 || arr[i-2] === c1) patRole = null; // placeholder, set below per-index
+      }
+    }
+    return { up, ratio, pct };
+  });
+
+  // 패턴 스캔: 각 인덱스가 양음양/음양음의 시작/중간/끝인지 표시
+  const patternRoles: ("start" | "mid" | "end" | null)[] = recent.map(() => null);
+  let foundPatternType: "양음양" | "음양음" | null = null;
+  for (let i = 2; i < recent.length; i++) {
+    const c1 = recent[i - 2], c2 = recent[i - 1], c3 = recent[i];
+    const up1 = c1.close >= c1.open, up2 = c2.close >= c2.open, up3 = c3.close >= c3.open;
+    if (up1 && !up2 && up3) {
+      patternRoles[i - 2] = "start"; patternRoles[i - 1] = "mid"; patternRoles[i] = "end";
+      foundPatternType = "양음양";
+    } else if (!up1 && up2 && !up3) {
+      patternRoles[i - 2] = "start"; patternRoles[i - 1] = "mid"; patternRoles[i] = "end";
+      foundPatternType = "음양음";
+    }
+  }
+
+  const [idx, setIdx] = React.useState(-1);
+  const [playing, setPlaying] = React.useState(false);
+  const [redWins, setRedWins] = React.useState(0);
+  const [blueWins, setBlueWins] = React.useState(0);
+  const [cumPct, setCumPct] = React.useState(0);
+  const [done, setDone] = React.useState(false);
+  const [shake, setShake] = React.useState(false);
+  const [showPatternCard, setShowPatternCard] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const reset = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setIdx(-1); setPlaying(false); setRedWins(0); setBlueWins(0); setCumPct(0); setDone(false);
+    setShake(false); setShowPatternCard(false);
+  };
+
+  const play = () => {
+    reset();
+    setPlaying(true);
+    let i = 0, r = 0, b = 0, cp = 0;
+    const step = () => {
+      if (i >= battles.length) {
+        setPlaying(false); setDone(true);
+        if (foundPatternType) setTimeout(() => setShowPatternCard(true), 100);
+        return;
+      }
+      const bt = battles[i];
+      if (bt.up) r++; else b++;
+      cp += bt.pct;
+      setIdx(i); setRedWins(r); setBlueWins(b); setCumPct(cp);
+      if (patternRoles[i] === "mid") {
+        setShake(true);
+        setTimeout(() => setShake(false), 400);
+      }
+      i++;
+      timerRef.current = setTimeout(step, 700);
+    };
+    step();
+  };
+
+  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const cur = idx >= 0 && idx < battles.length ? battles[idx] : null;
+  const curRole = idx >= 0 ? patternRoles[idx] : null;
+  const personCount = (ratio: number) => Math.min(5, Math.max(1, Math.ceil(ratio / 0.5)));
+  const ropePct = Math.max(-30, Math.min(30, cumPct * 3));
+
+  let statusText = "";
+  let coachText = "";
+  if (curRole === "mid") {
+    statusText = "😰 빨강팀 휘청!";
+    coachText = "거래량 동반 안 된 눌림 — 아직 추세 훼손은 아닙니다";
+  } else if (curRole === "end") {
+    statusText = "🔥 전열 정비! 다시 강하게 당김!";
+    coachText = "눌림 후 재돌파 — 추세 지속 신뢰도 높음, 보유 유지 검토";
+  } else if (cur && cur.ratio >= 1.8) {
+    statusText = `전원 합세! 거래량 ${Math.round(cur.ratio * 100)}%`;
+    coachText = cur.up
+      ? "거래량 동반 상승 — 신뢰도 높은 돌파, 추가 매수 검토"
+      : "거래량 동반 하락 — 매도 압력 강함, 손절 또는 비중 축소 검토";
+  } else if (cur && cur.ratio < 0.7) {
+    coachText = "거래량 적은 움직임 — 신뢰도 낮음, 추세 판단 보류";
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 16 }}>
+      <style>{`@keyframes battleShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}`}</style>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(360px, 100%)", overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid #e9ecef", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#212529" }}>🪢 최근 {N}봉 줄다리기</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 16, color: "#adb5bd", cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ padding: "14px 16px" }}>
+          {/* 상태 라벨 */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#212529" }}>
+              {idx < 0 ? "대기 중" : done ? "줄다리기 종료" : `${idx + 1}봉 — ${cur?.up ? "빨강팀 당기는 중" : "파랑팀 당기는 중"}`}
+            </span>
+            <span style={{ fontSize: 10, color: "#e03131", fontWeight: 700 }}>{statusText}</span>
+          </div>
+          {/* B안: 실시간 코칭 멘트 */}
+          {coachText && (
+            <div style={{ fontSize: 10, color: "#7048e8", background: "#f3f0ff", borderRadius: 6, padding: "4px 8px", marginBottom: 8, lineHeight: 1.5 }}>
+              💡 {coachText}
+            </div>
+          )}
+
+          {/* 줄다리기 필드 */}
+          <div style={{
+            position: "relative", height: 70, marginBottom: 10, background: "#f8f9fa",
+            borderRadius: 10, overflow: "hidden", border: "1px solid #e9ecef",
+            animation: shake ? "battleShake .4s" : "none",
+          }}>
+            <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 2, background: "#adb5bd" }} />
+            <div style={{
+              position: "absolute", left: `${50 - ropePct}%`, top: "50%", width: 100, height: 3,
+              background: "#868e96", transform: "translate(-50%, -50%)", transition: "left .65s cubic-bezier(.4,0,.2,1)",
+            }}>
+              <div style={{ position: "absolute", left: "50%", top: -5, width: 3, height: 13, background: "#495057", transform: "translateX(-50%)" }} />
+            </div>
+            <div style={{ position: "absolute", top: "50%", left: 8, transform: "translateY(-50%)", display: "flex", gap: 1, opacity: cur?.up ? 1 : 0, transition: "opacity .25s" }}>
+              {cur?.up && Array.from({ length: personCount(cur.ratio) }).map((_, i) => (
+                <span key={i} style={{ fontSize: 18 }}>🏃</span>
+              ))}
+            </div>
+            <div style={{ position: "absolute", top: "50%", right: 8, transform: "translateY(-50%)", display: "flex", flexDirection: "row-reverse", gap: 1, opacity: cur && !cur.up ? 1 : 0, transition: "opacity .25s" }}>
+              {cur && !cur.up && Array.from({ length: personCount(cur.ratio) }).map((_, i) => (
+                <span key={i} style={{ fontSize: 18 }}>🏃</span>
+              ))}
+            </div>
+          </div>
+
+          {/* 진행 도트 (패턴 라벨 포함) */}
+          <div style={{ display: "flex", gap: 4, justifyContent: "center", marginBottom: 10 }}>
+            {battles.map((bt, i) => (
+              <div key={i} style={{ position: "relative", width: 18, height: 18 }}>
+                {patternRoles[i] && (
+                  <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 700, color: "#7048e8", whiteSpace: "nowrap" }}>
+                    {patternRoles[i] === "mid" ? (bt.up ? "양" : "음") : (bt.up ? "양" : "음")}
+                  </div>
+                )}
+                <div style={{
+                  width: 18, height: 18, borderRadius: "50%",
+                  background: i <= idx ? (bt.up ? "#e03131" : "#1971c2") : "#fff",
+                  border: `1.5px solid ${i <= idx ? (bt.up ? "#e03131" : "#1971c2") : "#dee2e6"}`,
+                  transition: "all .3s",
+                }} />
+              </div>
+            ))}
+          </div>
+
+          {/* 통계 */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+            <div style={{ flex: 1, background: "#f8f9fa", borderRadius: 8, padding: "7px 10px", textAlign: "center" }}>
+              <div style={{ fontSize: 9, color: "#495057" }}>빨강팀 인원</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#e03131" }}>{cur?.up ? personCount(cur.ratio) : 0}명</div>
+            </div>
+            <div style={{ flex: 1, background: "#f8f9fa", borderRadius: 8, padding: "7px 10px", textAlign: "center" }}>
+              <div style={{ fontSize: 9, color: "#495057" }}>파랑팀 인원</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#1971c2" }}>{cur && !cur.up ? personCount(cur.ratio) : 0}명</div>
+            </div>
+          </div>
+          <div style={{ background: "#f8f9fa", borderRadius: 8, padding: "7px 12px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "#495057" }}>🪢 밧줄 위치 (가격)</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: cumPct >= 0 ? "#e03131" : "#1971c2" }}>
+              {cumPct >= 0 ? "+" : ""}{cumPct.toFixed(1)}%
+            </span>
+          </div>
+
+          {/* 당김 횟수 */}
+          <div style={{ background: "#f8f9fa", borderRadius: 8, padding: "7px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "#495057" }}>🪢 당김 횟수</span>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>
+              <span style={{ color: "#e03131" }}>{redWins}</span> : <span style={{ color: "#1971c2" }}>{blueWins}</span>
+            </span>
+          </div>
+
+          {/* 패턴 카드 (C안) */}
+          {showPatternCard && foundPatternType && (
+            <div style={{ background: "#f3f0ff", border: "1px solid #d0bfff", borderRadius: 8, padding: "9px 12px", fontSize: 11, color: "#7048e8", lineHeight: 1.6, marginBottom: 8 }}>
+              🕯️ {foundPatternType} 패턴 발견!<br />
+              {foundPatternType === "양음양"
+                ? "빨강팀이 한 번 휘청였지만 더 강하게 돌아왔습니다. 이게 추세 지속의 신호입니다."
+                : "파랑팀이 한 번 밀렸지만 다시 끌고 갔습니다. 하락 추세 지속 가능성에 주의하세요."}
+            </div>
+          )}
+
+          {/* 결과 */}
+          {done && (() => {
+            const priceUp = cumPct > 0;
+            const battleWinRed = redWins > blueWins;
+            const bg = priceUp ? "#fff5f5" : "#e7f5ff";
+            const border = priceUp ? "#fca5a5" : "#74c0fc";
+            const color = priceUp ? "#e03131" : "#1971c2";
+            const msg = priceUp
+              ? (battleWinRed
+                  ? `당김 횟수 ${redWins}번 ${blueWins}번으로 압도, 밧줄도 +${cumPct.toFixed(1)}% 끌려옴. 빨강팀의 완승!`
+                  : `당김 횟수는 ${blueWins}번 ${redWins}번으로 밀렸지만, 밧줄은 +${cumPct.toFixed(1)}% 끌려옴. 한 번의 강한 당김으로 역전!`)
+              : (!battleWinRed
+                  ? `당김 횟수 ${blueWins}번 ${redWins}번으로 압도, 밧줄도 ${cumPct.toFixed(1)}% 끌려감. 파랑팀의 완승!`
+                  : `당김 횟수는 ${redWins}번 ${blueWins}번으로 빨강팀이 우세했지만, 밧줄은 ${cumPct.toFixed(1)}% 끌려감. 작은 당김 여러 번보다 강한 한 번이 더 셉니다.`);
+
+            // C안: 지금 내 포지션 기반 행동 제안
+            let actionTitle = "";
+            let actionDesc = "";
+            let actionBtn: "diag" | "sell" | null = null;
+            if (holdings > 0) {
+              if (above5 === false && above10 === false) {
+                actionTitle = "보유 중 — 5MA·10MA 모두 이탈";
+                actionDesc = "줄다리기에서도 파랑팀이 우세했죠. 추세 이탈 가능성이 높습니다.";
+                actionBtn = "sell";
+              } else if (above10 === false) {
+                actionTitle = "보유 중 — 10MA 이탈";
+                actionDesc = "손절 또는 관망 검토가 필요한 구간입니다.";
+                actionBtn = "sell";
+              } else if (priceUp) {
+                actionTitle = "보유 중 — 추세 지속";
+                actionDesc = "밧줄이 빨강팀 쪽으로 끌려갔듯, 보유 포지션을 유지할 좋은 흐름입니다.";
+              } else {
+                actionTitle = "보유 중 — 단기 조정";
+                actionDesc = "파랑팀이 우세했지만 MA는 아직 무너지지 않았습니다. 진단을 확인해보세요.";
+                actionBtn = "diag";
+              }
+            } else {
+              if (priceUp && above5 && above10) {
+                actionTitle = "미보유 — 매수 신호 구간";
+                actionDesc = "빨강팀이 줄다리기를 주도했고 MA도 위입니다. 매수 적합도를 확인해보세요.";
+                actionBtn = "diag";
+              } else {
+                actionTitle = "미보유 — 관망 구간";
+                actionDesc = "지금은 추세가 불명확합니다. 진단 패널에서 더 확인해보세요.";
+                actionBtn = "diag";
+              }
+            }
+
+            return (
+              <>
+                <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: "9px 12px", fontSize: 11, color, lineHeight: 1.6, marginBottom: 8 }}>
+                  {priceUp ? "🔴" : "🔵"} {msg}
+                </div>
+                <div style={{ background: "#fff", border: "1px solid #dee2e6", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: "#adb5bd", marginBottom: 3 }}>📌 지금 당신의 포지션</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#212529", marginBottom: 3 }}>{actionTitle}</div>
+                  <div style={{ fontSize: 11, color: "#495057", lineHeight: 1.6, marginBottom: actionBtn ? 8 : 0 }}>{actionDesc}</div>
+                  {actionBtn === "diag" && (
+                    <button onClick={onGoDiag} style={{ width: "100%", padding: "8px", borderRadius: 7, border: "1px solid #d0bfff", background: "#f3f0ff", color: "#7048e8", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      📊 추세 진단 보기
+                    </button>
+                  )}
+                  {actionBtn === "sell" && (
+                    <button onClick={onGoSell} style={{ width: "100%", padding: "8px", borderRadius: 7, border: "1px solid #fca5a5", background: "#fff5f5", color: "#e03131", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      💰 매도 검토하기
+                    </button>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+
+          {/* 컨트롤 */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={play} disabled={playing} style={{
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              background: "#212529", color: "#fff", border: "none", borderRadius: 8,
+              padding: "9px", fontSize: 12, fontWeight: 700, cursor: playing ? "default" : "pointer",
+              opacity: playing ? 0.6 : 1, fontFamily: "inherit",
+            }}>▶ 재생</button>
+            <button onClick={reset} style={{
+              padding: "9px 14px", borderRadius: 8, border: "1px solid #dee2e6",
+              background: "#fff", fontSize: 12, color: "#495057", cursor: "pointer", fontFamily: "inherit",
+            }}>↻ 리셋</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 function analyzeMAStatus(price: number, prevPrice: number | null, maVal: number | null, prevMaVal: number | null) {
   if (!maVal) return null;
   if (!prevMaVal || prevPrice == null) return price > maVal
@@ -2230,6 +2531,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const [scoreModal,   setScoreModal]  = useState<TurnScore | null>(null);
   const [showResult,   setShowResult]  = useState(false);
   const [diagOpen,     setDiagOpen]    = useState(false);
+  const [showBattle,   setShowBattle]  = useState(false);
   const [banner,       setBanner]      = useState<{ text: string; color: string; bg: string; border: string } | null>(null);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastGameAsset, setLastGameAsset] = useState<number>(INIT_CASH);
@@ -2573,6 +2875,15 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       <style>{`@keyframes fadeInScale{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <TradeModal msg={tradeModal} />
+      {showBattle && (
+        <BattleModal
+          candles={chartCandles} vol20Avg={vol20Avg}
+          holdings={holdings} above5={above5} above10={above10}
+          onClose={() => setShowBattle(false)}
+          onGoDiag={() => { setShowBattle(false); setDiagOpen(true); }}
+          onGoSell={() => { setShowBattle(false); setSellMode("all"); }}
+        />
+      )}
       {scoreModal && <ScoreModal data={scoreModal} onClose={() => setScoreModal(null)} />}
       {showResult && (
         <ResultReport
@@ -2986,7 +3297,15 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                 : candleState && <div style={{ fontSize: 9, color: C.sub, marginTop: 1 }}>{candleState.label} · {candleState.desc}</div>
               }
             </div>
-            <div style={{ textAlign: "right" }}>
+            <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+              <button onClick={() => setShowBattle(true)} style={{
+                display: "flex", alignItems: "center", gap: 3,
+                background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 6,
+                padding: "3px 8px", cursor: "pointer", fontFamily: "inherit",
+              }}>
+                <span style={{ fontSize: 11 }}>🪢</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#e03131" }}>줄다리기</span>
+              </button>
               <div style={{ fontSize: 8, color: C.muted }}>현금최대 / {buyPct}%</div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>
                 <span style={{ color: C.accent }}>{buyableQty.toLocaleString()}</span>
