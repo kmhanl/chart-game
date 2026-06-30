@@ -2724,10 +2724,24 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         const minStart = MA_MIN, maxStart = candles.length - MAX_TURNS - 5;
         if (maxStart <= minStart) continue;
         let validStart = -1;
-        for (let a = 0; a < 30; a++) {
-          const s = minStart + Math.floor(Math.random() * (maxStart - minStart));
-          const p = isQ ? candles[s].close * EXCHANGE : candles[s].close;
-          if (p < (nextCash ?? INIT_CASH)) { validStart = s; break; }
+        if (useCustom) {
+          // 검색 종목은 "최근 흐름"을 보는 게 목적 — 데이터 맨 끝(가장 최신)에서 50턴 시작
+          const latestStart = candles.length - MAX_TURNS - 1;
+          const p = isQ ? candles[latestStart].close * EXCHANGE : candles[latestStart].close;
+          validStart = p < (nextCash ?? INIT_CASH) ? latestStart : -1;
+          // 자산이 부족해 최신 시점에서 시작 못하면 그 이전 시점들 중 가능한 곳을 뒤에서부터 탐색
+          if (validStart < 0) {
+            for (let s = latestStart - 1; s >= minStart; s--) {
+              const pp = isQ ? candles[s].close * EXCHANGE : candles[s].close;
+              if (pp < (nextCash ?? INIT_CASH)) { validStart = s; break; }
+            }
+          }
+        } else {
+          for (let a = 0; a < 30; a++) {
+            const s = minStart + Math.floor(Math.random() * (maxStart - minStart));
+            const p = isQ ? candles[s].close * EXCHANGE : candles[s].close;
+            if (p < (nextCash ?? INIT_CASH)) { validStart = s; break; }
+          }
         }
         if (validStart < 0) continue;
         setMarket(useCustom ? "CUSTOM" : mkt); setIsQQQ(isQ); setIntervalMode(itv); setMission(ms);
