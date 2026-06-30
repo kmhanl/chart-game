@@ -885,25 +885,28 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
         const c = candles[p.idx];
         const cx = sx(p.idx);
         const style2 = {
-          golden:     { shape: "star" as const,   color: "#e03131", y: sy(c.low)  + 14 },
-          dead:       { shape: "star" as const,   color: "#1971c2", y: sy(c.high) - 14 },
-          uppertail:  { shape: "circle" as const, color: "#1971c2", y: sy(c.high) - 10 },
-          lowertail:  { shape: "circle" as const, color: "#e03131", y: sy(c.low)  + 10 },
-          threebar:   { shape: "diamond" as const,color: "#7048e8", y: sy(c.low)  + 14 },
+          golden:     { shape: "star" as const,   color: "#e03131", y: sy(c.low)  + 18 },
+          dead:       { shape: "star" as const,   color: "#1971c2", y: sy(c.high) - 18 },
+          uppertail:  { shape: "circle" as const, color: "#1971c2", y: sy(c.high) - 12 },
+          lowertail:  { shape: "circle" as const, color: "#e03131", y: sy(c.low)  + 12 },
+          threebar:   { shape: "diamond" as const,color: "#7048e8", y: sy(c.low)  + 18 },
         }[p.type];
         const cy = style2.y;
         return (
-          <g key={pi} opacity={0.9}>
+          <g key={pi}>
+            {/* 배경 강조 박스 (가독성 향상) */}
+            <rect x={cx - 16} y={cy - 9} width={32} height={style2.shape === "circle" ? 28 : 24} rx={4}
+              fill="#fff" fillOpacity={0.85} stroke={style2.color} strokeWidth="0.5" strokeOpacity={0.3} />
             {style2.shape === "star" && (
-              <text x={cx} y={cy + 4} fontSize="13" textAnchor="middle">⭐</text>
+              <text x={cx} y={cy + 5} fontSize="16" textAnchor="middle">⭐</text>
             )}
             {style2.shape === "circle" && (
-              <circle cx={cx} cy={cy} r={7} fill="none" stroke={style2.color} strokeWidth="1.8" />
+              <circle cx={cx} cy={cy} r={8} fill="none" stroke={style2.color} strokeWidth="2.2" />
             )}
             {style2.shape === "diamond" && (
-              <text x={cx} y={cy + 4} fontSize="11" textAnchor="middle">🕯️</text>
+              <text x={cx} y={cy + 5} fontSize="14" textAnchor="middle">🕯️</text>
             )}
-            <text x={cx} y={cy + (style2.shape === "circle" ? 18 : 14)} fontSize="7" fill={style2.color} textAnchor="middle" fontWeight="bold">
+            <text x={cx} y={cy + (style2.shape === "circle" ? 20 : 16)} fontSize="8" fill={style2.color} textAnchor="middle" fontWeight="bold">
               {p.label}
             </text>
           </g>
@@ -2717,24 +2720,40 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   // B안: 차트 윈도우 내 패턴 스캔 — 골든/데드크로스, 윗/아랫꼬리, 양음양/음양음
   const chartPatternMarks = (() => {
     const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string }[] = [];
+    const usedIdx = new Set<number>(); // 한 캔들에 한 마크만 — 겹침 방지
+    // 1순위: 골든/데드크로스 (가장 중요한 추세 신호)
     for (let i = 1; i < chartCandles.length; i++) {
       const m5 = chartMa5[i], m10 = chartMa10[i], pm5 = chartMa5[i - 1], pm10 = chartMa10[i - 1];
       if (m5 && m10 && pm5 && pm10) {
-        if (pm5 < pm10 && m5 >= m10) marks.push({ idx: i, type: "golden", label: "골든크로스" });
-        else if (pm5 > pm10 && m5 <= m10) marks.push({ idx: i, type: "dead", label: "데드크로스" });
+        if (pm5 < pm10 && m5 >= m10) { marks.push({ idx: i, type: "golden", label: "골든크로스" }); usedIdx.add(i); }
+        else if (pm5 > pm10 && m5 <= m10) { marks.push({ idx: i, type: "dead", label: "데드크로스" }); usedIdx.add(i); }
       }
+    }
+    // 2순위: 양음양/음양음 (3봉 패턴 — 강한 신호만)
+    for (let i = 2; i < chartCandles.length; i++) {
+      if (usedIdx.has(i)) continue;
+      const c1 = chartCandles[i - 2], c2 = chartCandles[i - 1], c3 = chartCandles[i];
+      const up1 = c1.close >= c1.open, up2 = c2.close >= c2.open, up3 = c3.close >= c3.open;
+      if ((up1 && !up2 && up3) || (!up1 && up2 && !up3)) {
+        marks.push({ idx: i, type: "threebar", label: up1 && !up2 && up3 ? "양음양" : "음양음" });
+        usedIdx.add(i);
+      }
+    }
+    // 3순위: 강한 윗꼬리/아랫꼬리만 (기준 강화: 꼬리가 몸통의 2.5배 이상 + 전체 캔들 중 상대적으로 긴 경우)
+    const allRanges = chartCandles.map(c => c.high - c.low).filter(r => r > 0);
+    const avgRange = allRanges.length ? allRanges.reduce((a,b)=>a+b,0) / allRanges.length : 0;
+    for (let i = 1; i < chartCandles.length; i++) {
+      if (usedIdx.has(i)) continue;
       const c = chartCandles[i];
       const body  = Math.abs(c.close - c.open);
       const upper = c.high - Math.max(c.open, c.close);
       const lower = Math.min(c.open, c.close) - c.low;
-      if (upper > body * 1.5 && upper > 0) marks.push({ idx: i, type: "uppertail", label: "윗꼬리" });
-      if (lower > body * 1.5 && lower > 0) marks.push({ idx: i, type: "lowertail", label: "아랫꼬리" });
-      if (i >= 2) {
-        const c1 = chartCandles[i - 2], c2 = chartCandles[i - 1], c3 = chartCandles[i];
-        const up1 = c1.close >= c1.open, up2 = c2.close >= c2.open, up3 = c3.close >= c3.open;
-        if ((up1 && !up2 && up3) || (!up1 && up2 && !up3)) {
-          marks.push({ idx: i, type: "threebar", label: up1 && !up2 && up3 ? "양음양" : "음양음" });
-        }
+      const range = c.high - c.low;
+      // 강한 꼬리: 몸통의 2.5배 이상 AND 전체 변동폭의 60% 이상 차지
+      if (upper > body * 2.5 && upper > avgRange * 0.5 && range > 0) {
+        marks.push({ idx: i, type: "uppertail", label: "윗꼬리" }); usedIdx.add(i);
+      } else if (lower > body * 2.5 && lower > avgRange * 0.5 && range > 0) {
+        marks.push({ idx: i, type: "lowertail", label: "아랫꼬리" }); usedIdx.add(i);
       }
     }
     return marks;
