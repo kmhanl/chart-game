@@ -757,12 +757,13 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 // 차트 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers, avgCostLines, patternMarks }: {
+function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers, avgCostLines, patternMarks, pullbackZones }: {
   candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[];
   width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string;
   markers?: { idx:number; type:"매수"|"매도"; source?:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[];
   avgCostLines?: { price: number; source: "sim"|"mine"; label?: string }[];
-  patternMarks?: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string; cls: "up_cont" | "up_rev" | "down_cont" | "down_rev" }[];
+  patternMarks?: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar" | "pullback"; label: string; cls: "up_cont" | "up_rev" | "down_cont" | "down_rev" }[];
+  pullbackZones?: { startIdx: number; endIdx: number }[];
 }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
@@ -798,6 +799,15 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   };
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: "block", height: svgHeight ?? "100%", ...style }}>
+      {/* C안: 눌림목 구간 배경 음영 — 가장 아래 레이어 */}
+      {pullbackZones && pullbackZones.map((z, zi) => {
+        const x1 = sx(z.startIdx) - cw / 2;
+        const x2 = sx(z.endIdx) + cw / 2;
+        return (
+          <rect key={zi} x={x1} y={PAD.t} width={Math.max(0, x2 - x1)} height={H}
+            fill="#f97316" fillOpacity={0.08} />
+        );
+      })}
       {/* 매수▲ / 매도▼ 마커 (원칙=채움, 내꺼=빈 테두리+다른 오프셋) */}
       {markers && markers.map((m, mi) => {
         if (!candles[m.idx]) return null;
@@ -879,11 +889,32 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
           </g>
         );
       })}
-      {/* B안: 패턴 오버레이 — 4색 분류 체계 (상승지속/상승반전/하락지속/하락반전) */}
+      {/* B안: 패턴 오버레이 — 4색 분류 체계 + 눌림목(주황, 별도 카테고리) */}
       {patternMarks && patternMarks.map((p, pi) => {
         if (!candles[p.idx]) return null;
         const c = candles[p.idx];
         const cx = sx(p.idx);
+
+        // 눌림목은 4분류와 별개로 주황 단일 스타일
+        if (p.type === "pullback") {
+          const cy = sy(c.low) + 22;
+          return (
+            <g key={pi}>
+              <rect x={cx - 22} y={cy - 19} width={44} height={36} rx={5}
+                fill="#fff7ed" fillOpacity={0.95} stroke="#f97316" strokeWidth="1.2" />
+              <text x={cx} y={cy - 7} fontSize="11" textAnchor="middle">🎯</text>
+              <text x={cx} y={cy + 4} fontSize="7.5" fill="#c2410c" textAnchor="middle" fontWeight="bold">
+                눌림목 매수
+              </text>
+              <text x={cx} y={cy + 14} fontSize="7" fill="#c2410c" textAnchor="middle" fontWeight="600">
+                {p.label}
+              </text>
+              <line x1={cx} y1={cy - 17} x2={cx} y2={sy(c.low)}
+                stroke="#f97316" strokeWidth="1" strokeDasharray="2,2" strokeOpacity="0.6" />
+            </g>
+          );
+        }
+
         // 4색 분류 스타일
         const clsStyle = {
           up_cont:   { color: "#2f9e44", bg: "#f0fdf4", border: "#86efac", badge: "상승지속", arrow: "▲" },
@@ -2793,7 +2824,53 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         usedIdx.add(i);
       }
     }
+    // 4순위: 눌림목 끝 지점 (구간 마지막 캔들에 마크)
+    // chartPullbackZones는 아래에서 별도 계산, 여기서는 구간 끝점만 마크로 추가
+    for (let i = 5; i < chartCandles.length; i++) {
+      if (usedIdx.has(i)) continue;
+      const m240i = chartMa240[i], price = chartCandles[i].close;
+      const m10i = chartMa10[i];
+      const isAbove240 = m240i ? price > m240i : true; // 240MA 없으면 통과
+      const nearMA10 = m10i ? Math.abs(price - m10i) / m10i <= 0.03 && price >= m10i * 0.97 : false;
+      if (!isAbove240 || !nearMA10) continue;
+      // 거래량 감소 확인 (최근 4봉 평균 대비 현재봉)
+      const window4 = chartCandles.slice(Math.max(0, i - 3), i + 1);
+      if (window4.length < 4) continue;
+      const avgVol4 = window4.slice(0, 3).reduce((s,c)=>s+c.vol,0) / 3;
+      const volDecreasing = avgVol4 > 0 && window4[3].vol < avgVol4 * 0.7;
+      // 직전 캔들도 눌림목 조건이면 "구간 진행 중"이라 끝점이 아님 → 다음 캔들이 이탈하거나 끝까지 가면 여기서 마크
+      const isLastInWindow = i === chartCandles.length - 1;
+      const nextBreaksOut = i + 1 < chartCandles.length && (() => {
+        const nm10 = chartMa10[i+1], np = chartCandles[i+1].close;
+        return !(nm10 ? Math.abs(np - nm10) / nm10 <= 0.03 : false);
+      })();
+      if (volDecreasing && (isLastInWindow || nextBreaksOut)) {
+        marks.push({ idx: i, type: "pullback", label: "거래량 감소 확인", cls: "up_cont" });
+        usedIdx.add(i);
+      }
+    }
     return marks;
+  })();
+
+  // C안: 눌림목 구간 — 240MA 위 + 10MA 근접(±3%)이 연속되는 구간을 전체 감지
+  const chartPullbackZones = (() => {
+    const zones: { startIdx: number; endIdx: number }[] = [];
+    let start: number | null = null;
+    for (let i = 0; i < chartCandles.length; i++) {
+      const m240i = chartMa240[i], m10i = chartMa10[i], price = chartCandles[i].close;
+      const isAbove240 = m240i ? price > m240i : true;
+      const nearMA10 = m10i ? Math.abs(price - m10i) / m10i <= 0.03 && price >= m10i * 0.97 : false;
+      const inZone = isAbove240 && nearMA10;
+      if (inZone && start === null) start = i;
+      if (!inZone && start !== null) {
+        if (i - 1 - start >= 1) zones.push({ startIdx: start, endIdx: i - 1 }); // 최소 2봉 이상 구간만
+        start = null;
+      }
+    }
+    if (start !== null && chartCandles.length - 1 - start >= 1) {
+      zones.push({ startIdx: start, endIdx: chartCandles.length - 1 });
+    }
+    return zones;
   })();
 
   const lastCandle   = allCandles[curIdx]     ?? null;
@@ -3169,13 +3246,14 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                   ["⤴ 상승반전", "#e03131"],
                   ["▼ 하락지속", "#7048e8"],
                   ["⤵ 하락반전", "#1971c2"],
+                  ["🎯 눌림목", "#f97316"],
                 ].map(([l, col]) => (
                   <span key={l} style={{ fontSize: 8, color: col, fontWeight: 700 }}>{l}</span>
                 ))}
               </div>
             )}
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" patternMarks={showPatternMarks ? chartPatternMarks : undefined} />
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" patternMarks={showPatternMarks ? chartPatternMarks : undefined} pullbackZones={showPatternMarks ? chartPullbackZones : undefined} />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={40} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
         </div>
       </div>
@@ -3519,14 +3597,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
                   <span style={{ fontSize: 11 }}>🔍</span>
                   <span style={{ fontSize: 9, fontWeight: 700, color: showPatternMarks ? "#7048e8" : "#868e96" }}>패턴</span>
                 </button>
-                <button onClick={() => setShowBattle(true)} style={{
-                  display: "flex", alignItems: "center", gap: 3,
-                  background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 6,
-                  padding: "3px 8px", cursor: "pointer", fontFamily: "inherit",
-                }}>
-                  <span style={{ fontSize: 11 }}>🪢</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: "#e03131" }}>줄다리기</span>
-                </button>
+                {/* 줄다리기 버튼 — 숨김 처리 (필요 시 주석 해제) */}
               </div>
               <div style={{ fontSize: 8, color: C.muted }}>현금최대 / {buyPct}%</div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>
