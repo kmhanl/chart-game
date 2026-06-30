@@ -757,11 +757,12 @@ const fmtDate = (d: Date | undefined) => d instanceof Date ? d.toLocaleDateStrin
 // ══════════════════════════════════════════════════════════════════════════════
 // 차트 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
-function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers, avgCostLines }: {
+function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, style, svgHeight, markers, avgCostLines, patternMarks }: {
   candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; ma240: (number|null)[];
   width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string;
   markers?: { idx:number; type:"매수"|"매도"; source?:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[];
   avgCostLines?: { price: number; source: "sim"|"mine"; label?: string }[];
+  patternMarks?: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string }[];
 }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
@@ -875,6 +876,36 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
                 </>
               );
             })()}
+          </g>
+        );
+      })}
+      {/* B안: 패턴 오버레이 — 차트 위에 직접 표시 */}
+      {patternMarks && patternMarks.map((p, pi) => {
+        if (!candles[p.idx]) return null;
+        const c = candles[p.idx];
+        const cx = sx(p.idx);
+        const style2 = {
+          golden:     { shape: "star" as const,   color: "#e03131", y: sy(c.low)  + 14 },
+          dead:       { shape: "star" as const,   color: "#1971c2", y: sy(c.high) - 14 },
+          uppertail:  { shape: "circle" as const, color: "#1971c2", y: sy(c.high) - 10 },
+          lowertail:  { shape: "circle" as const, color: "#e03131", y: sy(c.low)  + 10 },
+          threebar:   { shape: "diamond" as const,color: "#7048e8", y: sy(c.low)  + 14 },
+        }[p.type];
+        const cy = style2.y;
+        return (
+          <g key={pi} opacity={0.9}>
+            {style2.shape === "star" && (
+              <text x={cx} y={cy + 4} fontSize="13" textAnchor="middle">⭐</text>
+            )}
+            {style2.shape === "circle" && (
+              <circle cx={cx} cy={cy} r={7} fill="none" stroke={style2.color} strokeWidth="1.8" />
+            )}
+            {style2.shape === "diamond" && (
+              <text x={cx} y={cy + 4} fontSize="11" textAnchor="middle">🕯️</text>
+            )}
+            <text x={cx} y={cy + (style2.shape === "circle" ? 18 : 14)} fontSize="7" fill={style2.color} textAnchor="middle" fontWeight="bold">
+              {p.label}
+            </text>
           </g>
         );
       })}
@@ -2474,19 +2505,29 @@ function appendGameToStats(pnlPct: number, trades: Trade[]): GameStats {
   stats.totalGames += 1;
   stats.totalPnl   += pnlPct;
   if (pnlPct > 0) stats.winGames += 1;
-  trades.filter(t => t.type === "매수").forEach(t => {
-    const snap = t.snap as Record<string, unknown>;
-    const key =
-      snap.goldenCross                ? "골든크로스" :
-      !snap.above10                   ? "10MA아래진입" :
-      (snap.overheat10 as boolean)    ? "과열구간진입" :
-      (snap.nearMA10   as boolean)    ? "눌림목진입"   :
-                                        "10MA위진입";
+  const addPattern = (key: string) => {
     if (!stats.entryPatterns[key])
       stats.entryPatterns[key] = { count: 0, wins: 0, pnlSum: 0 };
     stats.entryPatterns[key].count  += 1;
     stats.entryPatterns[key].pnlSum += pnlPct;
     if (pnlPct > 0) stats.entryPatterns[key].wins += 1;
+  };
+  trades.filter(t => t.type === "매수").forEach(t => {
+    const snap = t.snap as Record<string, unknown>;
+    // D안: 패턴별 세분화 — 거래량/윗꼬리 패턴도 함께 기록
+    if (snap.goldenCross) addPattern("골든크로스 매수");
+    else if (!snap.above10) addPattern("10MA 아래 매수");
+    else if (snap.overheat10) addPattern("과열구간 매수");
+    else if (snap.nearMA10) addPattern("눌림목 매수");
+    else addPattern("10MA 위 매수");
+
+    if (snap.volSurge) addPattern("거래량 확인 매수");
+    if (snap.upperTailSignal) addPattern("윗꼬리 무시 매수");
+  });
+  trades.filter(t => t.type === "매도").forEach(t => {
+    const snap = t.snap as Record<string, unknown>;
+    if (snap.deadCross) addPattern("데드크로스 매도");
+    if (!snap.above10) addPattern("10MA 이탈 매도");
   });
   saveStats(stats);
   return stats;
@@ -2672,6 +2713,32 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const chartMa5     = ma5.slice(chartStart);
   const chartMa10    = ma10.slice(chartStart);
   const chartMa240   = ma240.slice(chartStart);
+
+  // B안: 차트 윈도우 내 패턴 스캔 — 골든/데드크로스, 윗/아랫꼬리, 양음양/음양음
+  const chartPatternMarks = (() => {
+    const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string }[] = [];
+    for (let i = 1; i < chartCandles.length; i++) {
+      const m5 = chartMa5[i], m10 = chartMa10[i], pm5 = chartMa5[i - 1], pm10 = chartMa10[i - 1];
+      if (m5 && m10 && pm5 && pm10) {
+        if (pm5 < pm10 && m5 >= m10) marks.push({ idx: i, type: "golden", label: "골든크로스" });
+        else if (pm5 > pm10 && m5 <= m10) marks.push({ idx: i, type: "dead", label: "데드크로스" });
+      }
+      const c = chartCandles[i];
+      const body  = Math.abs(c.close - c.open);
+      const upper = c.high - Math.max(c.open, c.close);
+      const lower = Math.min(c.open, c.close) - c.low;
+      if (upper > body * 1.5 && upper > 0) marks.push({ idx: i, type: "uppertail", label: "윗꼬리" });
+      if (lower > body * 1.5 && lower > 0) marks.push({ idx: i, type: "lowertail", label: "아랫꼬리" });
+      if (i >= 2) {
+        const c1 = chartCandles[i - 2], c2 = chartCandles[i - 1], c3 = chartCandles[i];
+        const up1 = c1.close >= c1.open, up2 = c2.close >= c2.open, up3 = c3.close >= c3.open;
+        if ((up1 && !up2 && up3) || (!up1 && up2 && !up3)) {
+          marks.push({ idx: i, type: "threebar", label: up1 && !up2 && up3 ? "양음양" : "음양음" });
+        }
+      }
+    }
+    return marks;
+  })();
 
   const lastCandle   = allCandles[curIdx]     ?? null;
   const prevCandle   = allCandles[curIdx - 1] ?? null;
@@ -3037,7 +3104,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" />
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" patternMarks={chartPatternMarks} />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={40} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
         </div>
       </div>

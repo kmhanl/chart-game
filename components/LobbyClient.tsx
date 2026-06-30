@@ -338,6 +338,7 @@ export default function LobbyClient({ user }: Props) {
   // ④ 다음 게임 목표 + ⑤ 산점도 데이터 (localStorage)
   const [nextGoal,     setNextGoal]     = useState<{ text: string; tag: string; createdAt: string } | null>(null);
   const [scatterData,  setScatterData]  = useState<{ pnl: number; followScore: number }[]>([]);
+  const [entryPatterns, setEntryPatterns] = useState<Record<string, { count: number; wins: number; pnlSum: number }>>({});
 
   // C안: 종목 통계 탭
   const [showStats, setShowStats] = useState(false);
@@ -394,6 +395,7 @@ export default function LobbyClient({ user }: Props) {
         const stats = JSON.parse(raw);
         if (stats.nextGoal) setNextGoal(stats.nextGoal);
         if (stats.scatterData) setScatterData(stats.scatterData);
+        if (stats.entryPatterns) setEntryPatterns(stats.entryPatterns);
       }
     } catch { /* ignore */ }
   }, []);
@@ -656,6 +658,53 @@ export default function LobbyClient({ user }: Props) {
                 <span style={{ fontWeight: 700, color: avgH >= 0 ? "#2f9e44" : "#e03131" }}> {avgH >= 0 ? "+" : ""}{avgH.toFixed(1)}%</span>
                 {" / "} 60% 미만
                 <span style={{ fontWeight: 700, color: avgL >= 0 ? "#2f9e44" : "#e03131" }}> {avgL >= 0 ? "+" : ""}{avgL.toFixed(1)}%</span>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* D안: 패턴별 성공률 */}
+      {Object.keys(entryPatterns).length > 0 && (
+        <div style={{ width: "100%", maxWidth: 480, marginBottom: 14,
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            🎯 나의 패턴별 성공률
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {Object.entries(entryPatterns)
+              .map(([key, v]) => ({ key, ...v, winRate: v.count > 0 ? v.wins / v.count : 0, avgPnl: v.count > 0 ? v.pnlSum / v.count : 0 }))
+              .sort((a, b) => a.winRate - b.winRate)
+              .slice(0, 6)
+              .map(p => {
+                const isWeak = p.winRate < 0.4 && p.count >= 2;
+                const isStrong = p.winRate >= 0.6;
+                return (
+                  <div key={p.key} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "7px 10px", borderRadius: 8,
+                    background: isWeak ? "#fff5f5" : isStrong ? "#f0fdf4" : C.bg,
+                    border: `1px solid ${isWeak ? "#fca5a5" : isStrong ? "#86efac" : C.border}`,
+                  }}>
+                    <span style={{ fontSize: 11, color: C.text }}>
+                      {isWeak ? "⚠️ " : isStrong ? "✅ " : ""}{p.key}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: isWeak ? "#e03131" : isStrong ? "#2f9e44" : C.sub }}>
+                      {p.wins}승 {p.count - p.wins}패 ({Math.round(p.winRate * 100)}%)
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+          {(() => {
+            const weakest = Object.entries(entryPatterns)
+              .map(([key, v]) => ({ key, winRate: v.count > 0 ? v.wins / v.count : 0, count: v.count }))
+              .filter(p => p.count >= 2)
+              .sort((a, b) => a.winRate - b.winRate)[0];
+            if (!weakest || weakest.winRate >= 0.5) return null;
+            return (
+              <div style={{ marginTop: 8, fontSize: 10, color: "#991b1b", background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 8, padding: "6px 10px", lineHeight: 1.6 }}>
+                "{weakest.key}"가 가장 약점이에요. 다음 게임에서 이 패턴을 주의해보세요.
               </div>
             );
           })()}
