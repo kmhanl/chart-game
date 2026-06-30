@@ -2760,7 +2760,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   // B안: 차트 윈도우 내 패턴 스캔 — 골든/데드크로스, 윗/아랫꼬리, 양음양/음양음
   const chartPatternMarks = (() => {
     type Cls = "up_cont" | "up_rev" | "down_cont" | "down_rev";
-    const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string; cls: Cls }[] = [];
+    const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar" | "pullback"; label: string; cls: Cls }[] = [];
     const usedIdx = new Set<number>(); // 한 캔들에 한 마크만 — 겹침 방지
 
     // 분류 판정 헬퍼: 이 시점의 240MA/10MA 상태로 지속/반전 구분
