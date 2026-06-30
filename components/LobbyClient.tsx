@@ -465,8 +465,9 @@ export default function LobbyClient({ user }: Props) {
       const json = await res.json();
       const result = json?.chart?.result?.[0];
       const candleCount = result?.timestamp?.length ?? 0;
-      if (!result || candleCount < 50) {
-        setSearchErr(`"${name}"은(는) 데이터가 부족해 플레이할 수 없어요 (최소 50봉 필요, 현재 ${candleCount}봉).`);
+      const MIN_REQUIRED = 70; // 50턴 + MA_MIN(15) + 여유분(5)
+      if (!result || candleCount < MIN_REQUIRED) {
+        setSearchErr(`"${name}"은(는) 데이터가 부족해 플레이할 수 없어요 (최소 ${MIN_REQUIRED}봉 필요, 현재 ${candleCount}봉).`);
         setStartingTicker(null);
         return;
       }

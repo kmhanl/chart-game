@@ -185,8 +185,8 @@ const MISSIONS = [
 // 유틸
 // ══════════════════════════════════════════════════════════════════════════════
 async function fetchCandles(ticker: string, interval: string): Promise<Candle[]> {
-  const period1 = Math.floor(new Date("2010-01-01").getTime() / 1000);
-  const period2 = Math.floor(new Date("2023-12-31").getTime() / 1000);
+  const period1 = Math.floor(new Date("2000-01-01").getTime() / 1000);
+  const period2 = Math.floor(Date.now() / 1000);
   const url = `/api/yahoo/v8/finance/chart/${ticker}?period1=${period1}&period2=${period2}&interval=${interval}&events=div%7Csplit`;
   const res = await fetch(url);
   const json = await res.json();
@@ -1389,7 +1389,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 9999 }}>
       <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", boxShadow: "0 -4px 40px rgba(0,0,0,.2)", width: "min(480px, 100vw)", height: "92dvh", display: "flex", flexDirection: "column", animation: "fadeInScale .2s ease" }}>
         <div style={{ background: "#f8f9fa", padding: "20px 24px 16px", borderBottom: "1px solid #e9ecef", borderRadius: "20px 20px 0 0", textAlign: "center", flexShrink: 0 }}>
-          <div style={{ fontSize: 12, color: "#212529", marginBottom: 4, fontWeight: 600 }}>{market} · {stockMeta?.name} · {iLabel}</div>
+          <div style={{ fontSize: 12, color: "#212529", marginBottom: 4, fontWeight: 600 }}>{market === "CUSTOM" ? "검색" : market} · {stockMeta?.name} · {iLabel}</div>
           <div style={{ fontSize: 11, color: "#495057", marginBottom: 12 }}>{fmtDate(startDate)} ~ {fmtDate(endDate)}</div>
           <div style={{ fontSize: 38, fontWeight: 800, color: pnl >= 0 ? "#e03131" : "#1971c2" }}>{fmtPct(pnl)}</div>
           <div style={{ fontSize: 14, color: "#495057", marginTop: 4 }}>{fmtKRW(totalAsset)}</div>
@@ -2666,7 +2666,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const INIT_CASH = initialCash, MAX_TURNS = 50, EXCHANGE = 1350;
 
   const [screen,       setScreen]      = useState<string>("loading");
-  const [market,       setMarket]      = useState(initialMarket);
+  const [market,       setMarket]      = useState<string>(initialMarket);
   const [intervalMode, setIntervalMode]= useState(initialInterval);
   const [mission,      setMission]     = useState<string | null>(initialMission);
   const [isQQQ,        setIsQQQ]       = useState(false);
@@ -2717,7 +2717,9 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       try {
         const candles = await fetchCandles(candidate.ticker, itv);
         const isMonthly = itv === "1mo";
-        const MA_MIN = isMonthly ? 15 : 250;
+        // 검색으로 직접 고른 종목은 최근 상장사일 수 있어 240MA(약 5년치) 요구치를 완화
+        // — has240 분기 처리가 이미 코드 전반에 있어 240MA 없이도 게임 진행 가능
+        const MA_MIN = useCustom ? (isMonthly ? 11 : 15) : (isMonthly ? 15 : 250);
         if (candles.length < MAX_TURNS + MA_MIN + 5) continue;
         const minStart = MA_MIN, maxStart = candles.length - MAX_TURNS - 5;
         if (maxStart <= minStart) continue;
@@ -2728,7 +2730,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           if (p < (nextCash ?? INIT_CASH)) { validStart = s; break; }
         }
         if (validStart < 0) continue;
-        setMarket(mkt); setIsQQQ(isQ); setIntervalMode(itv); setMission(ms);
+        setMarket(useCustom ? "CUSTOM" : mkt); setIsQQQ(isQ); setIntervalMode(itv); setMission(ms);
         setStockMeta(candidate); setAllCandles(candles);
         setGameStart(validStart); setCurIdx(validStart);
         setCash(nextCash ?? INIT_CASH); setHoldings(0); setAvgCostKRW(0);
@@ -3182,7 +3184,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
           <button onClick={onBackToLobby} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: "2px 4px", fontFamily: "inherit", flexShrink: 0, whiteSpace: "nowrap" }}>← 로비</button>
           <span style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", flexShrink: 0 }}>차트게임 {isQQQ ? "🇺🇸" : "🇰🇷"}</span>
-          <span style={{ fontSize: 10, color: C.muted, background: C.surface, padding: "2px 6px", borderRadius: 5, border: `1px solid ${C.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>{market}</span>
+          <span style={{ fontSize: 10, color: C.muted, background: C.surface, padding: "2px 6px", borderRadius: 5, border: `1px solid ${C.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>{market === "CUSTOM" ? (isQQQ ? "검색" : "검색") : market}</span>
           <span style={{ fontSize: 10, color: C.accent, background: "#f3f0ff", padding: "2px 6px", borderRadius: 5, border: "1px solid #d0bfff", flexShrink: 0, whiteSpace: "nowrap" }}>{intervalLabel}</span>
         </div>
         {/* 우측: 날짜 + 턴 + 진행바 */}
