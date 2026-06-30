@@ -709,10 +709,22 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   const W = width - PAD.l - PAD.r, H = height - PAD.t - PAD.b, n = candles.length;
   const allP = candles.flatMap(c => [c.high, c.low]);
   const maV  = [...ma5, ...ma10, ...ma240].filter((v): v is number => v != null);
-  // 평단선도 가격 범위에 포함
-  const costV = (avgCostLines ?? []).map(l => l.price).filter(p => p > 0);
-  const minP = Math.min(...allP, ...maV, ...costV) * 0.995;
-  const maxP = Math.max(...allP, ...maV, ...costV) * 1.005;
+  // 캔들 가격 범위 (기준)
+  const candleMin = Math.min(...allP, ...maV);
+  const candleMax = Math.max(...allP, ...maV);
+  const candleRange = candleMax - candleMin || candleMax * 0.05 || 1;
+  // 평단선은 캔들 범위 기준 ±50% 이내일 때만 범위 계산에 포함 (이상치 방어)
+  const costV = (avgCostLines ?? [])
+    .map(l => l.price)
+    .filter(p => p > 0 && p >= candleMin - candleRange * 2 && p <= candleMax + candleRange * 2);
+  let minP = Math.min(candleMin, ...costV) * 0.995;
+  let maxP = Math.max(candleMax, ...costV) * 1.005;
+  // 분모 0 방어 — 범위가 너무 좁으면 강제로 벌려줌
+  if (maxP - minP < candleMax * 0.001) {
+    const mid = (maxP + minP) / 2;
+    minP = mid * 0.97;
+    maxP = mid * 1.03;
+  }
   const sx = (i: number) => PAD.l + (i / Math.max(n - 1, 1)) * W;
   const sy = (p: number) => PAD.t + H - ((p - minP) / (maxP - minP)) * H;
   const cw = Math.max(2, (W / n) * 0.7);
@@ -1848,10 +1860,9 @@ function PrincipleSimulator({
   // 평단 가로선: 보유 중일 때만 표시
   const avgCostLines = React.useMemo(() => {
     const lines: { price: number; source: "sim"|"mine"; label?: string }[] = [];
-    // 원칙 평단
+    // 원칙 평단 (avgCost는 이미 KRW 단위 — 추가 환산 불필요)
     if (stateRef.current.holdings > 0 && stateRef.current.avgCost > 0) {
-      const simAvgKrw = stateRef.current.avgCost / exchRate;
-      lines.push({ price: simAvgKrw, source: "sim", label: "원칙평단" });
+      lines.push({ price: stateRef.current.avgCost, source: "sim", label: "원칙평단" });
     }
     // 내 평단 계산
     let myHold = 0, myAvg = 0;
@@ -2051,6 +2062,7 @@ function PrincipleSimulator({
         <div style={{ position:"absolute", inset:0 }}>
           <CandleChart
             candles={chartC} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240}
+            width={700} height={400}
             svgHeight="100%"
             style={{ height:"100%", width:"100%" }}
             markers={markers}
