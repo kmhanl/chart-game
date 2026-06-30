@@ -2047,14 +2047,16 @@ function PrincipleSimulator({
       </div>
 
       {/* 차트 */}
-      <div style={{ flex:1, minHeight:0, background:"#fff" }}>
-        <CandleChart
-          candles={chartC} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240}
-          svgHeight="100%"
-          style={{ height:"100%" }}
-          markers={markers}
-          avgCostLines={avgCostLines}
-        />
+      <div style={{ flex:1, minHeight:0, position:"relative", background:"#fff" }}>
+        <div style={{ position:"absolute", inset:0 }}>
+          <CandleChart
+            candles={chartC} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240}
+            svgHeight="100%"
+            style={{ height:"100%", width:"100%" }}
+            markers={markers}
+            avgCostLines={avgCostLines}
+          />
+        </div>
       </div>
 
       {/* 2번: 핵심 학습 구간 팝업 (접기/펼치기) */}
