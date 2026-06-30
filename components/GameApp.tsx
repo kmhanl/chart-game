@@ -2649,6 +2649,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   const [showResult,   setShowResult]  = useState(false);
   const [diagOpen,     setDiagOpen]    = useState(false);
   const [showBattle,   setShowBattle]  = useState(false);
+  const [showPatternMarks, setShowPatternMarks] = useState(false);
   const [banner,       setBanner]      = useState<{ text: string; color: string; bg: string; border: string } | null>(null);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastGameAsset, setLastGameAsset] = useState<number>(INIT_CASH);
@@ -3123,7 +3124,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
             </div>
           </div>
-          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" patternMarks={chartPatternMarks} />
+          <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" patternMarks={showPatternMarks ? chartPatternMarks : undefined} />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={40} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
         </div>
       </div>
@@ -3457,14 +3458,25 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               }
             </div>
             <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-              <button onClick={() => setShowBattle(true)} style={{
-                display: "flex", alignItems: "center", gap: 3,
-                background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 6,
-                padding: "3px 8px", cursor: "pointer", fontFamily: "inherit",
-              }}>
-                <span style={{ fontSize: 11 }}>🪢</span>
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#e03131" }}>줄다리기</span>
-              </button>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => setShowPatternMarks(v => !v)} style={{
+                  display: "flex", alignItems: "center", gap: 3,
+                  background: showPatternMarks ? "#f3f0ff" : "#f8f9fa",
+                  border: `1px solid ${showPatternMarks ? "#7048e8" : "#dee2e6"}`,
+                  borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontFamily: "inherit",
+                }}>
+                  <span style={{ fontSize: 11 }}>🔍</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: showPatternMarks ? "#7048e8" : "#868e96" }}>패턴</span>
+                </button>
+                <button onClick={() => setShowBattle(true)} style={{
+                  display: "flex", alignItems: "center", gap: 3,
+                  background: "#fff5f5", border: "1px solid #fca5a5", borderRadius: 6,
+                  padding: "3px 8px", cursor: "pointer", fontFamily: "inherit",
+                }}>
+                  <span style={{ fontSize: 11 }}>🪢</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: "#e03131" }}>줄다리기</span>
+                </button>
+              </div>
               <div style={{ fontSize: 8, color: C.muted }}>현금최대 / {buyPct}%</div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>
                 <span style={{ color: C.accent }}>{buyableQty.toLocaleString()}</span>
