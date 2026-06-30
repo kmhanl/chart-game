@@ -8,6 +8,7 @@ export default async function GamePage({
   searchParams: Promise<{
     market?: string; interval?: string;
     mission?: string; initCash?: string;
+    ticker?: string; tickerName?: string;
   }>;
 }) {
   const supabase = await createClient();
@@ -19,6 +20,8 @@ export default async function GamePage({
   const interval  = (params.interval === "1mo" ? "1mo"  : "1wk")   as "1wk" | "1mo";
   const mission   = params.mission ?? null;
   const initCash  = params.initCash ? parseInt(params.initCash) : 10_000_000;
+  const customTicker     = params.market === "CUSTOM" ? (params.ticker ?? null) : null;
+  const customTickerName = params.market === "CUSTOM" ? (params.tickerName ?? params.ticker ?? null) : null;
 
   return (
     <GameClient
@@ -27,6 +30,8 @@ export default async function GamePage({
       initialInterval={interval}
       initialMission={mission}
       initialCash={initCash}
+      customTicker={customTicker}
+      customTickerName={customTickerName}
     />
   );
 }

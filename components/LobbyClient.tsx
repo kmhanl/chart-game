@@ -333,6 +333,12 @@ export default function LobbyClient({ user }: Props) {
 
   // A안: 종목 목록 탭
   const [showUniverse,    setShowUniverse]    = useState(false);
+  const [showCustomSearch, setShowCustomSearch] = useState(false);
+  const [searchQuery,    setSearchQuery]    = useState("");
+  const [searchResults,  setSearchResults]  = useState<{ symbol: string; name: string; exch: string }[]>([]);
+  const [searching,      setSearching]      = useState(false);
+  const [searchErr,      setSearchErr]      = useState("");
+  const [startingTicker, setStartingTicker] = useState<string | null>(null);
   const [universeMarket,  setUniverseMarket]  = useState<"KOSPI" | "QQQ">("KOSPI");
 
   // ④ 다음 게임 목표 + ⑤ 산점도 데이터 (localStorage)
@@ -412,6 +418,71 @@ export default function LobbyClient({ user }: Props) {
     const asset = currentAsset ?? INIT_CASH;
     const params = new URLSearchParams({ market, interval: intervalMode, initCash: String(asset) });
     router.push(`/game?${params.toString()}`);
+  };
+
+  // 종목/티커 검색 — Yahoo Finance 검색 API 프록시 사용
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    setSearchErr("");
+    if (query.trim().length < 1) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`);
+      const json = await res.json();
+      const quotes = (json?.quotes ?? [])
+        .filter((q: { quoteType?: string }) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
+        .map((q: { symbol: string; shortname?: string; longname?: string; exchange?: string }) => ({
+          symbol: q.symbol,
+          name: q.shortname || q.longname || q.symbol,
+          exch: q.exchange ?? "",
+        }));
+      setSearchResults(quotes);
+      if (quotes.length === 0) setSearchErr("검색 결과가 없어요. 정확한 종목명이나 티커를 입력해보세요.");
+    } catch {
+      setSearchErr("검색 중 오류가 발생했어요. 다시 시도해주세요.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // 검색된 티커로 직접 게임 시작 — 주봉 50봉
+  const handleStartCustom = async (ticker: string, name: string) => {
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    if (!currentUser) {
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=/game` },
+      });
+      return;
+    }
+    setStartingTicker(ticker);
+    setSearchErr("");
+    try {
+      // 최소 데이터 검증 (50봉 이상 주봉 데이터 있는지)
+      const period1 = Math.floor(new Date("2010-01-01").getTime() / 1000);
+      const period2 = Math.floor(Date.now() / 1000);
+      const res = await fetch(`/api/yahoo/v8/finance/chart/${ticker}?period1=${period1}&period2=${period2}&interval=1wk&events=div%7Csplit`);
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      const candleCount = result?.timestamp?.length ?? 0;
+      if (!result || candleCount < 50) {
+        setSearchErr(`"${name}"은(는) 데이터가 부족해 플레이할 수 없어요 (최소 50봉 필요, 현재 ${candleCount}봉).`);
+        setStartingTicker(null);
+        return;
+      }
+      const asset = currentAsset ?? INIT_CASH;
+      const params = new URLSearchParams({
+        market: "CUSTOM",
+        ticker,
+        tickerName: name,
+        interval: "1wk",
+        initCash: String(asset),
+      });
+      router.push(`/game?${params.toString()}`);
+    } catch {
+      setSearchErr("데이터를 불러오는 중 오류가 발생했어요. 다시 시도해주세요.");
+      setStartingTicker(null);
+    }
   };
 
   const pnlColor = (pct: number) => pct > 0 ? C.red : pct < 0 ? C.blue : C.muted;
@@ -794,6 +865,68 @@ export default function LobbyClient({ user }: Props) {
               })}
             </div>
           ))}
+
+          {/* 원하는 종목이 없다면? — 검색 진입점 */}
+          <div style={{ padding: "14px 12px", borderTop: `1px solid ${C.border}`, textAlign: "center" }}>
+            <button onClick={() => setShowCustomSearch(v => !v)} style={{
+              background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit", textDecoration: "underline",
+            }}>
+              원하는 종목이 없다면?
+            </button>
+
+            {showCustomSearch && (
+              <div style={{ marginTop: 10, textAlign: "left" }}>
+                <input
+                  value={searchQuery}
+                  onChange={e => handleSearch(e.target.value)}
+                  placeholder="종목명 또는 티커 검색 (예: 테슬라, AAPL)"
+                  style={{
+                    width: "100%", padding: "9px 12px", borderRadius: 8,
+                    border: `1.5px solid ${C.border2}`, fontSize: 13, fontFamily: "inherit",
+                    boxSizing: "border-box", marginBottom: 8,
+                  }}
+                />
+                {searching && (
+                  <div style={{ fontSize: 11, color: C.muted, textAlign: "center", padding: "8px 0" }}>검색 중...</div>
+                )}
+                {searchErr && (
+                  <div style={{ fontSize: 11, color: C.red, padding: "8px 10px", background: "#fff5f5", borderRadius: 8, border: "1px solid #fca5a5", marginBottom: 6 }}>
+                    {searchErr}
+                  </div>
+                )}
+                {!searching && searchResults.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {searchResults.map(r => (
+                      <button
+                        key={r.symbol}
+                        onClick={() => handleStartCustom(r.symbol, r.name)}
+                        disabled={startingTicker === r.symbol}
+                        style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "9px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                          background: C.bg, cursor: startingTicker === r.symbol ? "default" : "pointer",
+                          fontFamily: "inherit", textAlign: "left",
+                          opacity: startingTicker === r.symbol ? 0.6 : 1,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{r.name}</div>
+                          <div style={{ fontSize: 10, color: C.muted }}>{r.symbol} · {r.exch}</div>
+                        </div>
+                        <span style={{ fontSize: 11, color: C.accent, fontWeight: 700 }}>
+                          {startingTicker === r.symbol ? "확인 중..." : "플레이 ›"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 8, lineHeight: 1.6 }}>
+                  검색한 종목으로 주봉 50봉 기준 게임을 바로 시작합니다.
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

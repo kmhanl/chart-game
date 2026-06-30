@@ -24,10 +24,13 @@ interface Props {
   initialInterval: "1wk" | "1mo";
   initialMission: string | null;
   initialCash?: number;
+  customTicker?: string | null;
+  customTickerName?: string | null;
 }
 
 export default function GameClient({
   user, initialMarket, initialInterval, initialMission, initialCash = 10_000_000,
+  customTicker = null, customTickerName = null,
 }: Props) {
   const router = useRouter();
   const [navigating, setNavigating] = useState(false);
@@ -74,6 +77,8 @@ export default function GameClient({
       initialInterval={initialInterval}
       initialMission={initialMission}
       initialCash={initialCash}
+      customTicker={customTicker}
+      customTickerName={customTickerName}
       onGameEnd={handleGameEnd}
       onBackToLobby={handleBackToLobby}
     />

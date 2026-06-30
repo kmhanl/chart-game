@@ -40,6 +40,8 @@ interface GameAppProps {
   initialInterval: "1wk" | "1mo";
   initialMission: string | null;
   initialCash?: number;          // ← 이 줄 추가
+  customTicker?: string | null;
+  customTickerName?: string | null;
   onGameEnd: (result: GameResult) => Promise<string | null>;
   onBackToLobby: () => void;
 }
@@ -2660,7 +2662,7 @@ function getCoachMsg(
   return { level:"info", title:`${turn + 1}턴 진행 중`, body:"차트를 분석하고 매수/매도/다음 턴을 선택하세요." };
 }
 
-export default function GameApp({ initialMarket, initialInterval, initialMission, initialCash = 10_000_000, onGameEnd, onBackToLobby }: GameAppProps) {
+export default function GameApp({ initialMarket, initialInterval, initialMission, initialCash = 10_000_000, customTicker = null, customTickerName = null, onGameEnd, onBackToLobby }: GameAppProps) {
   const INIT_CASH = initialCash, MAX_TURNS = 50, EXCHANGE = 1350;
 
   const [screen,       setScreen]      = useState<string>("loading");
@@ -2704,10 +2706,13 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
     bannerTimer.current = setTimeout(() => setBanner(null), 3500);
   };
 
-  const startGame = async (mkt: "KOSPI" | "QQQ", itv = intervalMode, ms = mission, nextCash?: number) => {
-    const isQ = mkt === "QQQ";
+  const startGame = async (mkt: "KOSPI" | "QQQ", itv = intervalMode, ms = mission, nextCash?: number, forceTicker?: string | null, forceTickerName?: string | null) => {
+    const useCustom = !!forceTicker;
+    const isQ = useCustom ? !forceTicker!.includes(".KS") : mkt === "QQQ";
     setLoadErr(""); setScreen("loading");
-    const shuffled = [...UNIVERSE[mkt]].sort(() => Math.random() - 0.5);
+    const shuffled = useCustom
+      ? [{ name: forceTickerName ?? forceTicker!, ticker: forceTicker! }]
+      : [...UNIVERSE[mkt]].sort(() => Math.random() - 0.5);
     for (const candidate of shuffled) {
       try {
         const candles = await fetchCandles(candidate.ticker, itv);
@@ -2733,12 +2738,14 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         setScreen("game"); return;
       } catch { continue; }
     }
-    setLoadErr("데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+    setLoadErr(useCustom
+      ? `"${forceTickerName ?? forceTicker}" 종목은 데이터가 부족해 게임을 시작할 수 없습니다.`
+      : "데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
     setScreen("lobby");
   };
 
-  // 게임 시작 시 자동으로 데이터 로드
-  useState(() => { startGame(initialMarket, initialInterval, initialMission); });
+  // 게임 시작 시 자동으로 데이터 로드 (customTicker 있으면 해당 종목으로)
+  useState(() => { startGame(initialMarket, initialInterval, initialMission, undefined, customTicker, customTickerName); });
 
   // 파생값
   const MA240_PERIOD = 240;
