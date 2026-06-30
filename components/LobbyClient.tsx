@@ -244,6 +244,7 @@ const UNIVERSE_DISPLAY = {
       { name: "KT", ticker: "030200.KS" },
       { name: "한국전력", ticker: "015760.KS" },
       { name: "코웨이", ticker: "021240.KS" },
+      { name: "슈프리마에이치큐", ticker: "094840.KQ" },
     ]},
   ],
   QQQ: [
