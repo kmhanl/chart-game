@@ -226,31 +226,59 @@ function analyzeCandleState(c: Candle | null) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 전황 보기 — 거래량을 병력 규모로 시각화한 전투 애니메이션
 // ══════════════════════════════════════════════════════════════════════════════
-function BattleModal({ candles, vol20Avg, holdings, above5, above10, onClose, onGoDiag, onGoSell }: {
-  candles: Candle[]; vol20Avg: number;
+function BattleModal({ candles, ma5, ma10, vol20Avg, holdings, above5, above10, onClose, onGoDiag, onGoSell }: {
+  candles: Candle[]; ma5: (number|null)[]; ma10: (number|null)[]; vol20Avg: number;
   holdings: number; above5: boolean | null; above10: boolean | null;
   onClose: () => void; onGoDiag: () => void; onGoSell: () => void;
 }) {
   const N = Math.min(10, candles.length);
   const recent = candles.slice(-N);
+  const totalLen = candles.length;
+  const ma5Recent  = ma5.slice(-N);
+  const ma10Recent = ma10.slice(-N);
+  // 직전 MA (패턴 판정용 — 윈도우 시작 직전 값)
+  const ma5Prev0  = ma5[Math.max(0, totalLen - N - 1)] ?? null;
+  const ma10Prev0 = ma10[Math.max(0, totalLen - N - 1)] ?? null;
 
-  // 거래량 비율 + 가격변화율 + 3봉 패턴(양음양/음양음) 위치 사전 계산
-  const battles = recent.map((c, i, arr) => {
+  type EventTag = { key: string; label: string; emoji: string; color: string; coach: string };
+
+  // 거래량 비율 + 가격변화율 + 캔들별 단일 이벤트 사전 계산
+  const battles = recent.map((c, i) => {
     const ratio = vol20Avg > 0 ? c.vol / vol20Avg : 1;
     const pct = c.open > 0 ? ((c.close - c.open) / c.open) * 100 : 0;
     const up = c.close >= c.open;
-    let patRole: "start" | "mid" | "end" | null = null;
-    if (i >= 2) {
-      const c1 = arr[i - 2], c2 = arr[i - 1], c3 = arr[i];
-      const up1 = c1.close >= c1.open, up2 = c2.close >= c2.open, up3 = c3.close >= c3.open;
-      if (up1 && !up2 && up3) {
-        if (i - 2 === 0 || arr[i-2] === c1) patRole = null; // placeholder, set below per-index
-      }
+    const body  = Math.abs(c.close - c.open);
+    const upper = c.high - Math.max(c.open, c.close);
+    const lower = Math.min(c.open, c.close) - c.low;
+    const upperTail = upper > body * 1.5 && upper > 0;
+    const lowerTail = lower > body * 1.5 && lower > 0;
+
+    // 골든/데드크로스 — 이 캔들 시점의 MA5/MA10 비교
+    const m5 = ma5Recent[i], m10 = ma10Recent[i];
+    const pm5 = i === 0 ? ma5Prev0 : ma5Recent[i - 1];
+    const pm10 = i === 0 ? ma10Prev0 : ma10Recent[i - 1];
+    const golden = !!(m5 && m10 && pm5 && pm10 && pm5 < pm10 && m5 >= m10);
+    const dead    = !!(m5 && m10 && pm5 && pm10 && pm5 > pm10 && m5 <= m10);
+
+    let event: EventTag | null = null;
+    if (golden) {
+      event = { key: "golden", label: "골든크로스", emoji: "⚡", color: "#e03131", coach: "5MA가 10MA를 돌파 — 단기 추세 전환, 거래량 확인 후 매수 검토" };
+    } else if (dead) {
+      event = { key: "dead", label: "데드크로스", emoji: "💥", color: "#1971c2", coach: "5MA가 10MA를 이탈 — 단기 추세 꺾임, 손절 또는 관망 검토" };
+    } else if (ratio >= 1.8) {
+      event = up
+        ? { key: "volsurge_up", label: "대군 합류", emoji: "🔥", color: "#e03131", coach: "거래량 동반 상승 — 신뢰도 높은 돌파 신호" }
+        : { key: "volsurge_down", label: "대량 매도", emoji: "⚠️", color: "#1971c2", coach: "거래량 동반 하락 — 매도 압력 강함, 주의 필요" };
+    } else if (upperTail) {
+      event = { key: "uppertail", label: "윗꼬리", emoji: "↑", color: "#1971c2", coach: "고점에서 매도 압력 — 상단 저항 가능성" };
+    } else if (lowerTail) {
+      event = { key: "lowertail", label: "아랫꼬리", emoji: "↓", color: "#e03131", coach: "저점에서 매수 지지 — 하단 지지 확인" };
     }
-    return { up, ratio, pct };
+
+    return { up, ratio, pct, event };
   });
 
-  // 패턴 스캔: 각 인덱스가 양음양/음양음의 시작/중간/끝인지 표시
+  // 3봉 패턴(양음양/음양음) 스캔 — 단일 이벤트가 없는 구간 위에 보조로 표시
   const patternRoles: ("start" | "mid" | "end" | null)[] = recent.map(() => null);
   let foundPatternType: "양음양" | "음양음" | null = null;
   for (let i = 2; i < recent.length; i++) {
@@ -264,6 +292,13 @@ function BattleModal({ candles, vol20Avg, holdings, above5, above10, onClose, on
       foundPatternType = "음양음";
     }
   }
+
+  // C안: 사전 안내용 — 이번 구간에 어떤 신호들이 있는지 모아두기
+  const eventSummary = battles
+    .map((b, i) => ({ ...b.event, idx: i }))
+    .filter((e): e is EventTag & { idx: number } => !!e.key);
+  const uniqueEventLabels = Array.from(new Set(eventSummary.map(e => e.label)));
+  if (foundPatternType) uniqueEventLabels.push(foundPatternType);
 
   const [idx, setIdx] = React.useState(-1);
   const [playing, setPlaying] = React.useState(false);
@@ -314,17 +349,19 @@ function BattleModal({ candles, vol20Avg, holdings, above5, above10, onClose, on
 
   let statusText = "";
   let coachText = "";
-  if (curRole === "mid") {
+  let eventTagLabel = "";
+  let eventTagColor = "";
+  if (cur?.event) {
+    eventTagLabel = `${cur.event.emoji} ${cur.event.label}`;
+    eventTagColor = cur.event.color;
+    statusText = `${cur.event.emoji} ${cur.event.label}!`;
+    coachText = cur.event.coach;
+  } else if (curRole === "mid") {
     statusText = "😰 빨강팀 휘청!";
     coachText = "거래량 동반 안 된 눌림 — 아직 추세 훼손은 아닙니다";
   } else if (curRole === "end") {
     statusText = "🔥 전열 정비! 다시 강하게 당김!";
     coachText = "눌림 후 재돌파 — 추세 지속 신뢰도 높음, 보유 유지 검토";
-  } else if (cur && cur.ratio >= 1.8) {
-    statusText = `전원 합세! 거래량 ${Math.round(cur.ratio * 100)}%`;
-    coachText = cur.up
-      ? "거래량 동반 상승 — 신뢰도 높은 돌파, 추가 매수 검토"
-      : "거래량 동반 하락 — 매도 압력 강함, 손절 또는 비중 축소 검토";
   } else if (cur && cur.ratio < 0.7) {
     coachText = "거래량 적은 움직임 — 신뢰도 낮음, 추세 판단 보류";
   }
@@ -339,6 +376,15 @@ function BattleModal({ candles, vol20Avg, holdings, above5, above10, onClose, on
         </div>
 
         <div style={{ padding: "14px 16px" }}>
+          {/* C안: 재생 전 사전 안내 — 이번 구간에 숨어있는 신호 미리보기 */}
+          {idx < 0 && (
+            <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 11, color: "#854f0b", lineHeight: 1.6 }}>
+              {uniqueEventLabels.length > 0
+                ? <>🔍 이번 구간에 숨어있는 신호: <b>{uniqueEventLabels.join(", ")}</b><br />재생을 누르면 어디서 발생하는지 확인할 수 있어요!</>
+                : "😴 이번 구간은 특별한 신호 없이 조용히 흘러갑니다. 재생해서 흐름을 확인해보세요."}
+            </div>
+          )}
+
           {/* 상태 라벨 */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "#212529" }}>
@@ -378,19 +424,24 @@ function BattleModal({ candles, vol20Avg, holdings, above5, above10, onClose, on
             </div>
           </div>
 
-          {/* 진행 도트 (패턴 라벨 포함) */}
+          {/* 진행 도트 (이벤트/패턴 라벨 포함, A안) */}
           <div style={{ display: "flex", gap: 4, justifyContent: "center", marginBottom: 10 }}>
             {battles.map((bt, i) => (
               <div key={i} style={{ position: "relative", width: 18, height: 18 }}>
-                {patternRoles[i] && (
-                  <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 700, color: "#7048e8", whiteSpace: "nowrap" }}>
-                    {patternRoles[i] === "mid" ? (bt.up ? "양" : "음") : (bt.up ? "양" : "음")}
+                {bt.event ? (
+                  <div style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)", fontSize: 9, whiteSpace: "nowrap" }}>
+                    {bt.event.emoji}
                   </div>
-                )}
+                ) : patternRoles[i] ? (
+                  <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 700, color: "#7048e8", whiteSpace: "nowrap" }}>
+                    {bt.up ? "양" : "음"}
+                  </div>
+                ) : null}
                 <div style={{
                   width: 18, height: 18, borderRadius: "50%",
                   background: i <= idx ? (bt.up ? "#e03131" : "#1971c2") : "#fff",
-                  border: `1.5px solid ${i <= idx ? (bt.up ? "#e03131" : "#1971c2") : "#dee2e6"}`,
+                  border: `1.5px solid ${bt.event ? bt.event.color : i <= idx ? (bt.up ? "#e03131" : "#1971c2") : "#dee2e6"}`,
+                  borderWidth: bt.event ? 2.5 : 1.5,
                   transition: "all .3s",
                 }} />
               </div>
@@ -430,6 +481,14 @@ function BattleModal({ candles, vol20Avg, holdings, above5, above10, onClose, on
               {foundPatternType === "양음양"
                 ? "빨강팀이 한 번 휘청였지만 더 강하게 돌아왔습니다. 이게 추세 지속의 신호입니다."
                 : "파랑팀이 한 번 밀렸지만 다시 끌고 갔습니다. 하락 추세 지속 가능성에 주의하세요."}
+            </div>
+          )}
+
+          {/* D안: 신호도 패턴도 없었던 조용한 구간 안내 */}
+          {done && uniqueEventLabels.length === 0 && (
+            <div style={{ background: "#f8f9fa", border: "1px solid #e9ecef", borderRadius: 8, padding: "9px 12px", fontSize: 11, color: "#495057", lineHeight: 1.6, marginBottom: 8 }}>
+              😴 이번 10봉엔 특별한 신호가 없었습니다.<br />
+              횡보 구간 — 무리한 매매보다 관망이 정답입니다.
             </div>
           )}
 
@@ -2891,7 +2950,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       <TradeModal msg={tradeModal} />
       {showBattle && (
         <BattleModal
-          candles={chartCandles} vol20Avg={vol20Avg}
+          candles={chartCandles} ma5={chartMa5} ma10={chartMa10} vol20Avg={vol20Avg}
           holdings={holdings} above5={above5} above10={above10}
           onClose={() => setShowBattle(false)}
           onGoDiag={() => { setShowBattle(false); setDiagOpen(true); }}
