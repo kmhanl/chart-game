@@ -2708,7 +2708,8 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 
   const startGame = async (mkt: string, itv = intervalMode, ms = mission, nextCash?: number, forceTicker?: string | null, forceTickerName?: string | null) => {
     const useCustom = !!forceTicker || mkt === "CUSTOM";
-    const isQ = useCustom ? !!(forceTicker && !forceTicker.includes(".KS")) : mkt === "QQQ";
+    const isKorean = !!forceTicker && (forceTicker.includes(".KS") || forceTicker.includes(".KQ"));
+    const isQ = useCustom ? !isKorean : mkt === "QQQ";
     setLoadErr(""); setScreen("loading");
     const shuffled = useCustom
       ? (forceTicker ? [{ name: forceTickerName ?? forceTicker, ticker: forceTicker }] : [{ name: stockMeta?.name ?? "", ticker: stockMeta?.ticker ?? "" }])
