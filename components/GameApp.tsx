@@ -762,7 +762,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string;
   markers?: { idx:number; type:"매수"|"매도"; source?:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[];
   avgCostLines?: { price: number; source: "sim"|"mine"; label?: string }[];
-  patternMarks?: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string }[];
+  patternMarks?: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string; cls: "up_cont" | "up_rev" | "down_cont" | "down_rev" }[];
 }) {
   if (!candles.length) return null;
   const PAD = { l: 10, r: 50, t: 8, b: 8 };
@@ -879,36 +879,44 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
           </g>
         );
       })}
-      {/* B안: 패턴 오버레이 — 차트 위에 직접 표시 */}
+      {/* B안: 패턴 오버레이 — 4색 분류 체계 (상승지속/상승반전/하락지속/하락반전) */}
       {patternMarks && patternMarks.map((p, pi) => {
         if (!candles[p.idx]) return null;
         const c = candles[p.idx];
         const cx = sx(p.idx);
-        const style2 = {
-          golden:     { shape: "star" as const,   color: "#e03131", y: sy(c.low)  + 18 },
-          dead:       { shape: "star" as const,   color: "#1971c2", y: sy(c.high) - 18 },
-          uppertail:  { shape: "circle" as const, color: "#1971c2", y: sy(c.high) - 12 },
-          lowertail:  { shape: "circle" as const, color: "#e03131", y: sy(c.low)  + 12 },
-          threebar:   { shape: "diamond" as const,color: "#7048e8", y: sy(c.low)  + 18 },
-        }[p.type];
-        const cy = style2.y;
+        // 4색 분류 스타일
+        const clsStyle = {
+          up_cont:   { color: "#2f9e44", bg: "#f0fdf4", border: "#86efac", badge: "상승지속", arrow: "▲" },
+          up_rev:    { color: "#e03131", bg: "#fff5f5", border: "#fca5a5", badge: "상승반전", arrow: "⤴" },
+          down_cont: { color: "#7048e8", bg: "#f3f0ff", border: "#d0bfff", badge: "하락지속", arrow: "▼" },
+          down_rev:  { color: "#1971c2", bg: "#e7f5ff", border: "#74c0fc", badge: "하락반전", arrow: "⤵" },
+        }[p.cls];
+        const isAbove = p.type === "dead" || p.type === "uppertail";
+        const cy = isAbove ? sy(c.high) - 22 : sy(c.low) + 22;
+        const shapeEmoji = p.type === "golden" || p.type === "dead" ? "⭐"
+          : p.type === "threebar" ? "🕯️"
+          : null; // 꼬리는 원으로
+
         return (
           <g key={pi}>
-            {/* 배경 강조 박스 (가독성 향상) */}
-            <rect x={cx - 16} y={cy - 9} width={32} height={style2.shape === "circle" ? 28 : 24} rx={4}
-              fill="#fff" fillOpacity={0.85} stroke={style2.color} strokeWidth="0.5" strokeOpacity={0.3} />
-            {style2.shape === "star" && (
-              <text x={cx} y={cy + 5} fontSize="16" textAnchor="middle">⭐</text>
-            )}
-            {style2.shape === "circle" && (
-              <circle cx={cx} cy={cy} r={8} fill="none" stroke={style2.color} strokeWidth="2.2" />
-            )}
-            {style2.shape === "diamond" && (
-              <text x={cx} y={cy + 5} fontSize="14" textAnchor="middle">🕯️</text>
-            )}
-            <text x={cx} y={cy + (style2.shape === "circle" ? 20 : 16)} fontSize="8" fill={style2.color} textAnchor="middle" fontWeight="bold">
+            {/* 분류 배지 박스 */}
+            <rect x={cx - 20} y={cy - 19} width={40} height={36} rx={5}
+              fill={clsStyle.bg} fillOpacity={0.95} stroke={clsStyle.color} strokeWidth="1" />
+            {/* 화살표 + 아이콘 */}
+            <text x={cx} y={cy - 7} fontSize="11" textAnchor="middle">
+              {shapeEmoji ?? (p.type === "uppertail" ? "○" : "○")}
+            </text>
+            {/* 4분류 배지 텍스트 */}
+            <text x={cx} y={cy + 4} fontSize="7.5" fill={clsStyle.color} textAnchor="middle" fontWeight="bold">
+              {clsStyle.arrow} {clsStyle.badge}
+            </text>
+            {/* 패턴 이름 */}
+            <text x={cx} y={cy + 14} fontSize="7" fill={clsStyle.color} textAnchor="middle" fontWeight="600">
               {p.label}
             </text>
+            {/* 연결선 */}
+            <line x1={cx} y1={isAbove ? cy + 17 : cy - 17} x2={cx} y2={isAbove ? sy(c.high) : sy(c.low)}
+              stroke={clsStyle.color} strokeWidth="1" strokeDasharray="2,2" strokeOpacity="0.5" />
           </g>
         );
       })}
@@ -2720,14 +2728,36 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 
   // B안: 차트 윈도우 내 패턴 스캔 — 골든/데드크로스, 윗/아랫꼬리, 양음양/음양음
   const chartPatternMarks = (() => {
-    const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string }[] = [];
+    type Cls = "up_cont" | "up_rev" | "down_cont" | "down_rev";
+    const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar"; label: string; cls: Cls }[] = [];
     const usedIdx = new Set<number>(); // 한 캔들에 한 마크만 — 겹침 방지
+
+    // 분류 판정 헬퍼: 이 시점의 240MA/10MA 상태로 지속/반전 구분
+    // above240: 장기 추세, above10: 단기 추세
+    const classify = (i: number, signalUp: boolean): Cls => {
+      const m240 = chartMa240[i];
+      const price = chartCandles[i].close;
+      const isAbove240 = m240 ? price > m240 : null;
+      if (signalUp) {
+        // 상승 신호 — 이미 240MA 위(상승추세 중)면 지속, 아래/불명확이면 반전(전환 시도)
+        return isAbove240 === true ? "up_cont" : "up_rev";
+      } else {
+        // 하락 신호 — 이미 240MA 아래(하락추세 중)면 지속, 위면 반전(전환 시도)
+        return isAbove240 === false ? "down_cont" : "down_rev";
+      }
+    };
+
     // 1순위: 골든/데드크로스 (가장 중요한 추세 신호)
     for (let i = 1; i < chartCandles.length; i++) {
       const m5 = chartMa5[i], m10 = chartMa10[i], pm5 = chartMa5[i - 1], pm10 = chartMa10[i - 1];
       if (m5 && m10 && pm5 && pm10) {
-        if (pm5 < pm10 && m5 >= m10) { marks.push({ idx: i, type: "golden", label: "골든크로스" }); usedIdx.add(i); }
-        else if (pm5 > pm10 && m5 <= m10) { marks.push({ idx: i, type: "dead", label: "데드크로스" }); usedIdx.add(i); }
+        if (pm5 < pm10 && m5 >= m10) {
+          marks.push({ idx: i, type: "golden", label: "골든크로스", cls: classify(i, true) });
+          usedIdx.add(i);
+        } else if (pm5 > pm10 && m5 <= m10) {
+          marks.push({ idx: i, type: "dead", label: "데드크로스", cls: classify(i, false) });
+          usedIdx.add(i);
+        }
       }
     }
     // 2순위: 양음양/음양음 (3봉 패턴 — 강한 신호만)
@@ -2735,8 +2765,11 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       if (usedIdx.has(i)) continue;
       const c1 = chartCandles[i - 2], c2 = chartCandles[i - 1], c3 = chartCandles[i];
       const up1 = c1.close >= c1.open, up2 = c2.close >= c2.open, up3 = c3.close >= c3.open;
-      if ((up1 && !up2 && up3) || (!up1 && up2 && !up3)) {
-        marks.push({ idx: i, type: "threebar", label: up1 && !up2 && up3 ? "양음양" : "음양음" });
+      if (up1 && !up2 && up3) {
+        marks.push({ idx: i, type: "threebar", label: "양음양", cls: classify(i, true) });
+        usedIdx.add(i);
+      } else if (!up1 && up2 && !up3) {
+        marks.push({ idx: i, type: "threebar", label: "음양음", cls: classify(i, false) });
         usedIdx.add(i);
       }
     }
@@ -2751,10 +2784,13 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       const lower = Math.min(c.open, c.close) - c.low;
       const range = c.high - c.low;
       // 강한 꼬리: 몸통의 2.5배 이상 AND 전체 변동폭의 60% 이상 차지
+      // 윗꼬리 = 매도압력(하락 신호), 아랫꼬리 = 매수지지(상승 신호)
       if (upper > body * 2.5 && upper > avgRange * 0.5 && range > 0) {
-        marks.push({ idx: i, type: "uppertail", label: "윗꼬리" }); usedIdx.add(i);
+        marks.push({ idx: i, type: "uppertail", label: "윗꼬리", cls: classify(i, false) });
+        usedIdx.add(i);
       } else if (lower > body * 2.5 && lower > avgRange * 0.5 && range > 0) {
-        marks.push({ idx: i, type: "lowertail", label: "아랫꼬리" }); usedIdx.add(i);
+        marks.push({ idx: i, type: "lowertail", label: "아랫꼬리", cls: classify(i, true) });
+        usedIdx.add(i);
       }
     }
     return marks;
@@ -3113,16 +3149,31 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       {/* 차트 — 남은 공간 탄력적으로 채움 */}
       <div style={{ flex: 1, minHeight: 0, padding: "4px 10px 0", overflow: "hidden" }}>
         <div style={{ background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden", height: "100%", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "4px 10px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-            {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
-              <span key={l} style={{ fontSize: 9, color: col, display: "flex", alignItems: "center", gap: 2 }}>
-                <span style={{ display: "inline-block", width: 12, height: 2, background: col, borderRadius: 1 }} />{l}
-              </span>
-            ))}
-            <div style={{ marginLeft: "auto", textAlign: "right" }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: isUp ? C.red : C.blue, lineHeight: 1 }}>{isQQQ ? fmtUSD(currentPrice) : fmtKRW(currentPrice)}</div>
-              {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
+          <div style={{ padding: "4px 10px", display: "flex", flexDirection: "column", gap: 3, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
+                <span key={l} style={{ fontSize: 9, color: col, display: "flex", alignItems: "center", gap: 2 }}>
+                  <span style={{ display: "inline-block", width: 12, height: 2, background: col, borderRadius: 1 }} />{l}
+                </span>
+              ))}
+              <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: isUp ? C.red : C.blue, lineHeight: 1 }}>{isQQQ ? fmtUSD(currentPrice) : fmtKRW(currentPrice)}</div>
+                {isQQQ && <div style={{ fontSize: 9, color: C.muted }}>≈ {fmtKRW(krwPrice)}</div>}
+              </div>
             </div>
+            {/* 패턴 오버레이 4색 범례 — 토글 켜졌을 때만 표시 */}
+            {showPatternMarks && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[
+                  ["▲ 상승지속", "#2f9e44"],
+                  ["⤴ 상승반전", "#e03131"],
+                  ["▼ 하락지속", "#7048e8"],
+                  ["⤵ 하락반전", "#1971c2"],
+                ].map(([l, col]) => (
+                  <span key={l} style={{ fontSize: 8, color: col, fontWeight: 700 }}>{l}</span>
+                ))}
+              </div>
+            )}
           </div>
           <CandleChart candles={chartCandles} ma5={chartMa5} ma10={chartMa10} ma240={chartMa240} style={{ flex: 1, minHeight: 0 }} svgHeight="100%" patternMarks={showPatternMarks ? chartPatternMarks : undefined} />
           <div style={{ borderTop: `1px solid ${C.border}`, flexShrink: 0 }}><VolumeChart candles={chartCandles} height={40} interval={intervalMode} vol20Avg={vol20Avg} highlightLast={true} /></div>
