@@ -3654,44 +3654,78 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
               )}
             </div>
 
-            {/* ── 3봉 패턴 + 급등이탈 섹션 ── */}
-            {(threeBarPattern || isBreakAbove5MA) && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>🕯️ 캔들 패턴</div>
-                {threeBarPattern && (
-                  <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${threeBarPattern.color}44`, background: threeBarPattern.bg, marginBottom: 6 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: threeBarPattern.color }}>
-                        {threeBarPattern.icon} {threeBarPattern.label} 패턴{threeBarPattern.strong ? " ⭐" : ""}
+            {/* ── 캔들 패턴 섹션 ── */}
+            {/* 오버레이 ON + 현재 봉에 마크 있음 → 한 줄 뱃지로 축소 / 없거나 오버레이 OFF → 풀카드 */}
+            {(threeBarPattern || isBreakAbove5MA) && (() => {
+              // 현재 봉(차트 마지막 봉)에 오버레이 마크가 있는지 확인
+              const lastChartIdx = chartCandles.length - 1;
+              const currentMark = showPatternMarks
+                ? chartPatternMarks?.find(m => m.idx === lastChartIdx)
+                : undefined;
+
+              // 패턴별 뱃지 정보
+              const badgeInfo = threeBarPattern
+                ? { icon: threeBarPattern.icon, label: threeBarPattern.label + " 패턴" + (threeBarPattern.strong ? " ⭐" : ""), color: threeBarPattern.color, bg: threeBarPattern.bg }
+                : isBreakAbove5MA
+                ? { icon: "🔻", label: "5MA 깨짐 — 전량 매도 권고", color: "#991b1b", bg: "#fff5f5" }
+                : null;
+
+              if (!badgeInfo) return null;
+
+              return (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 6 }}>🕯️ 캔들 패턴</div>
+
+                  {currentMark ? (
+                    // ── 오버레이에 이미 표시됨 → 한 줄 뱃지 ──
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: badgeInfo.bg, border: `1px solid ${badgeInfo.color}44`, borderRadius: 10 }}>
+                      <span style={{ fontSize: 16 }}>{badgeInfo.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: badgeInfo.color }}>{badgeInfo.label}</div>
+                        <div style={{ fontSize: 10, color: C.muted, marginTop: 1 }}>차트 오버레이에 표시됨</div>
                       </div>
-                      {(() => {
-                        const bars = threeBarPattern.type === "양음양"
-                          ? [{ h: 16, up: true }, { h: 10, up: false }, { h: 20, up: true }]
-                          : [{ h: 16, up: false }, { h: 10, up: true }, { h: 20, up: false }];
-                        return (
-                          <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 24 }}>
-                            {bars.map((b, i) => (
-                              <div key={i} style={{ width: 7, height: b.h, borderRadius: 2, background: b.up ? "#e03131" : "#1971c2" }} />
-                            ))}
+                      <div style={{ fontSize: 10, color: C.accent, fontWeight: 600, whiteSpace: "nowrap" }}>차트 참조 →</div>
+                    </div>
+                  ) : (
+                    // ── 오버레이 없거나 꺼짐 → 풀카드 ──
+                    <>
+                      {threeBarPattern && (
+                        <div style={{ padding: "10px 12px", borderRadius: 10, border: `1px solid ${threeBarPattern.color}44`, background: threeBarPattern.bg, marginBottom: 6 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: threeBarPattern.color }}>
+                              {threeBarPattern.icon} {threeBarPattern.label} 패턴{threeBarPattern.strong ? " ⭐" : ""}
+                            </div>
+                            {(() => {
+                              const bars = threeBarPattern.type === "양음양"
+                                ? [{ h: 16, up: true }, { h: 10, up: false }, { h: 20, up: true }]
+                                : [{ h: 16, up: false }, { h: 10, up: true }, { h: 20, up: false }];
+                              return (
+                                <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 24 }}>
+                                  {bars.map((b, i) => (
+                                    <div key={i} style={{ width: 7, height: b.h, borderRadius: 2, background: b.up ? "#e03131" : "#1971c2" }} />
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
-                        );
-                      })()}
-                    </div>
-                    <div style={{ fontSize: 10, color: threeBarPattern.color, marginBottom: 3 }}>{threeBarPattern.desc}</div>
-                    <div style={{ fontSize: 10, color: "#495057", background: "rgba(255,255,255,0.6)", borderRadius: 6, padding: "4px 8px" }}>
-                      → {threeBarPattern.suggestion}
-                    </div>
-                  </div>
-                )}
-                {isBreakAbove5MA && (
-                  <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>🚨 급등 후 5MA 이탈</div>
-                    <div style={{ fontSize: 10, color: "#991b1b" }}>최근 10봉 내 +30% 이상 급등 후 5MA 하향 이탈</div>
-                    <div style={{ fontSize: 10, color: "#c2410c", marginTop: 2, fontWeight: 700 }}>→ 전량 매도 권고 — 추세 전환 가능성</div>
-                  </div>
-                )}
-              </div>
-            )}
+                          <div style={{ fontSize: 10, color: threeBarPattern.color, marginBottom: 3 }}>{threeBarPattern.desc}</div>
+                          <div style={{ fontSize: 10, color: "#495057", background: "rgba(255,255,255,0.6)", borderRadius: 6, padding: "4px 8px" }}>
+                            → {threeBarPattern.suggestion}
+                          </div>
+                        </div>
+                      )}
+                      {isBreakAbove5MA && (
+                        <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #fca5a5", background: "#fff5f5", marginBottom: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#991b1b", marginBottom: 3 }}>🚨 급등 후 5MA 이탈</div>
+                          <div style={{ fontSize: 10, color: "#991b1b" }}>최근 10봉 내 +30% 이상 급등 후 5MA 하향 이탈</div>
+                          <div style={{ fontSize: 10, color: "#c2410c", marginTop: 2, fontWeight: 700 }}>→ 전량 매도 권고 — 추세 전환 가능성</div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {!ma240Cur && (
               <div style={{ padding: "8px 12px", background: "#f8f9fa", borderRadius: 10, border: "1px solid #e9ecef", fontSize: 11, color: "#868e96", marginBottom: 8 }}>
