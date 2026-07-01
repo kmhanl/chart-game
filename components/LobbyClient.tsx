@@ -421,17 +421,45 @@ export default function LobbyClient({ user }: Props) {
     router.push(`/game?${params.toString()}`);
   };
 
-  // 종목/티커 검색 — Yahoo Finance 검색 API 프록시 사용
-  // 코스피 종목은 기본 검색만으로는 잘 안 잡혀서, 한국 지역(region=KR) 검색을 함께 돌려 병합한다.
+  // ── 한글 검색용 로컬 종목 플랫 리스트 (KOSPI/KOSDAQ 한글 이름 포함)
+  const LOCAL_KR_STOCKS = Object.values(UNIVERSE_DISPLAY).flat().flatMap(
+    (group) => (group as { sector: string; stocks: { name: string; ticker: string }[] }).stocks
+  ).map(s => ({
+    symbol: s.ticker,
+    name: s.name,
+    exch: s.ticker.endsWith(".KQ") ? "KOSDAQ" : s.ticker.endsWith(".KS") ? "KOSPI" : "US",
+  }));
+
+  // 종목/티커 검색
+  // 1) 한글 입력 시 로컬 리스트에서 이름/티커 매칭 우선
+  // 2) 영문 입력 시 Yahoo API + 로컬 병합
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
     setSearchErr("");
-    if (query.trim().length < 1) { setSearchResults([]); return; }
+    const q = query.trim();
+    if (q.length < 1) { setSearchResults([]); return; }
+
+    // 한글 포함 여부 체크
+    const hasKorean = /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(q);
+
+    if (hasKorean) {
+      // 한글 검색: 로컬 리스트에서만 매칭 (Yahoo API는 한글 검색 미지원)
+      const lower = q.toLowerCase();
+      const results = LOCAL_KR_STOCKS.filter(s =>
+        s.name.toLowerCase().includes(lower) ||
+        s.symbol.toLowerCase().includes(lower)
+      );
+      setSearchResults(results);
+      if (results.length === 0) setSearchErr("검색 결과가 없어요. 다른 이름이나 종목코드로 검색해보세요.");
+      return;
+    }
+
+    // 영문/숫자 검색: Yahoo API 우선, 로컬 보완
     setSearching(true);
     try {
       const [globalRes, krRes] = await Promise.all([
-        fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`),
-        fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0&lang=ko-KR&region=KR`),
+        fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0`),
+        fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&lang=ko-KR&region=KR`),
       ]);
       const [globalJson, krJson] = await Promise.all([globalRes.json(), krRes.json()]);
       interface YahooQuoteRaw {
@@ -443,16 +471,31 @@ export default function LobbyClient({ user }: Props) {
       }
       const toQuotes = (json: { quotes?: YahooQuoteRaw[] }) =>
         (json?.quotes ?? [])
-          .filter((q: YahooQuoteRaw) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
-          .map((q: YahooQuoteRaw) => ({
-            symbol: q.symbol,
-            name: q.shortname || q.longname || q.symbol,
-            exch: q.exchange === "KSC" ? "KOSPI" : q.exchange === "KOE" ? "KOSDAQ" : (q.exchange ?? ""),
+          .filter((q2: YahooQuoteRaw) => q2.quoteType === "EQUITY" || q2.quoteType === "ETF")
+          .map((q2: YahooQuoteRaw) => ({
+            symbol: q2.symbol,
+            name: q2.shortname || q2.longname || q2.symbol,
+            exch: q2.exchange === "KSC" ? "KOSPI" : q2.exchange === "KOE" ? "KOSDAQ" : (q2.exchange ?? ""),
           }));
-      const merged = [...toQuotes(globalJson), ...toQuotes(krJson)];
-      // 심볼 기준 중복 제거 (같은 종목이 양쪽에서 나올 수 있음)
+
+      // Yahoo 결과에 로컬 한글 이름 덮어쓰기 (삼성전자 → "SamsungElec" 대신 "삼성전자" 표시)
+      const yahooResults = [...toQuotes(globalJson), ...toQuotes(krJson)];
+      const localNameMap = new Map(LOCAL_KR_STOCKS.map(s => [s.symbol, s.name]));
+      const merged = yahooResults.map(r => ({
+        ...r,
+        name: localNameMap.get(r.symbol) ?? r.name,  // 로컬 한글 이름 우선
+      }));
+
+      // 로컬 매칭도 추가 (티커 코드 검색 시 로컬 종목 보완)
+      const lower = q.toLowerCase();
+      const localMatches = LOCAL_KR_STOCKS.filter(s =>
+        s.symbol.toLowerCase().includes(lower) || s.name.toLowerCase().includes(lower)
+      );
+      const combined = [...merged, ...localMatches];
+
+      // 심볼 기준 중복 제거
       const seen = new Set<string>();
-      const quotes = merged.filter(q => (seen.has(q.symbol) ? false : (seen.add(q.symbol), true)));
+      const quotes = combined.filter(r => (seen.has(r.symbol) ? false : (seen.add(r.symbol), true)));
       setSearchResults(quotes);
       if (quotes.length === 0) setSearchErr("검색 결과가 없어요. 정확한 종목명이나 티커를 입력해보세요.");
     } catch {
@@ -901,16 +944,36 @@ export default function LobbyClient({ user }: Props) {
 
             {showCustomSearch && (
               <div style={{ marginTop: 10, textAlign: "left" }}>
+
+                {/* 봉 선택 — 검색창 바로 위 */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  {([["1wk","📊 주봉"],["1mo","📅 월봉"]] as const).map(([val, lbl]) => {
+                    const active = intervalMode === val;
+                    return (
+                      <button key={val} onClick={() => setIntervalMode(val)} style={{
+                        flex: 1, padding: "7px 0", borderRadius: 8, fontFamily: "inherit",
+                        border: `1.5px solid ${active ? C.accent : C.border2}`,
+                        background: active ? "#f3f0ff" : C.bg,
+                        color: active ? C.accent : C.sub,
+                        fontWeight: active ? 800 : 500, fontSize: 13, cursor: "pointer",
+                      }}>{lbl}</button>
+                    );
+                  })}
+                </div>
+
+                {/* 검색 입력창 */}
                 <input
                   value={searchQuery}
                   onChange={e => handleSearch(e.target.value)}
-                  placeholder="종목명 또는 티커 검색 (예: 테슬라, AAPL)"
+                  placeholder="한글/영문 종목명 또는 티커 (예: 삼성전자, AAPL)"
                   style={{
                     width: "100%", padding: "9px 12px", borderRadius: 8,
                     border: `1.5px solid ${C.border2}`, fontSize: 13, fontFamily: "inherit",
-                    boxSizing: "border-box", marginBottom: 8,
+                    boxSizing: "border-box", marginBottom: 8, outline: "none",
                   }}
+                  autoFocus
                 />
+
                 {searching && (
                   <div style={{ fontSize: 11, color: C.muted, textAlign: "center", padding: "8px 0" }}>검색 중...</div>
                 )}
@@ -920,7 +983,7 @@ export default function LobbyClient({ user }: Props) {
                   </div>
                 )}
                 {!searching && searchResults.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 8 }}>
                     {searchResults.map(r => (
                       <button
                         key={r.symbol}
@@ -945,10 +1008,12 @@ export default function LobbyClient({ user }: Props) {
                     ))}
                   </div>
                 )}
-                <div style={{ fontSize: 10, color: C.muted, marginTop: 8, lineHeight: 1.6 }}>
-                  검색한 종목으로 <b>{intervalMode === "1mo" ? "월봉" : "주봉"}</b> 50봉 기준 게임을 바로 시작합니다.
-                  {intervalMode === "1mo" && " 월봉 데이터가 50개월 미만인 종목은 시작할 수 없어요."}
-                  {" "}봉 기준은 위 "봉 기준" 토글에서 바꿀 수 있어요.
+
+                {/* 안내 텍스트 */}
+                <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.7, padding: "6px 2px" }}>
+                  💡 한글로 검색하면 국내 종목을 바로 찾을 수 있어요 (예: 삼성전자, 하이닉스)<br/>
+                  선택한 종목으로 <b style={{ color: C.accent }}>{intervalMode === "1mo" ? "월봉" : "주봉"}</b> 50봉 기준 게임을 시작합니다.
+                  {intervalMode === "1mo" && <span style={{ color: C.red }}> 월봉은 50개월 이상 데이터가 필요해요.</span>}
                 </div>
               </div>
             )}
