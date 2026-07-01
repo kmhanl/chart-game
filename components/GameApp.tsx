@@ -945,8 +945,8 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
         const customLabel: CustomLabel | null =
           pType === "break5ma"   ? { line1: "전량매도 권고", line2: "5MA 깨짐",    wide: true  } :
           pType === "ma10_break" ? { line1: "손절 검토",     line2: "10MA 이탈",  wide: true  } :
-          pType === "vol_climax" ? { line1: p.extra === "과열주의" ? "매수클라이맥스" : "패닉셀",
-                                     line2: p.extra ?? "",                         wide: true  } :
+          pType === "vol_climax" ? { line1: (p as any).extra === "과열주의" ? "매수클라이맥스" : "패닉셀",
+                                     line2: (p as any).extra ?? "",                wide: true  } :
           pType === "ma240_cross"? { line1: p.label,         line2: "장기추세전환", wide: true  } :
           pType === "n_wave"     ? { line1: "N파동 완성",    line2: "추세 확인",  wide: false } :
           null;
