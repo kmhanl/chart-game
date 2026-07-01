@@ -925,34 +925,35 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
           down_rev:  { color: "#1971c2", bg: "#e7f5ff", border: "#74c0fc", badge: "하락반전", arrow: "⤵" },
         }[p.cls];
         // 위/아래 배치 결정
-        const isAbove = p.type === "dead" || p.type === "uppertail" || p.type === "break5ma"
-          || p.type === "ma10_break" || p.type === "vol_climax" || p.type === "ma240_cross";
+        const pType = p.type as string;
+        const isAbove = pType === "dead" || pType === "uppertail" || pType === "break5ma"
+          || pType === "ma10_break" || pType === "vol_climax" || pType === "ma240_cross";
         const cy = isAbove ? sy(c.high) - 22 : sy(c.low) + 22;
 
         // 아이콘
-        const shapeEmoji = p.type === "golden" || p.type === "dead" ? "⭐"
-          : p.type === "threebar" ? "🕯️"
-          : p.type === "break5ma" ? "🔻"
-          : p.type === "ma10_break" ? "🔴"
-          : p.type === "vol_climax" ? "📊"
-          : p.type === "ma240_cross" ? "⭕"
-          : p.type === "n_wave" ? "〰️"
+        const shapeEmoji = pType === "golden" || pType === "dead" ? "⭐"
+          : pType === "threebar" ? "🕯️"
+          : pType === "break5ma" ? "🔻"
+          : pType === "ma10_break" ? "🔴"
+          : pType === "vol_climax" ? "📊"
+          : pType === "ma240_cross" ? "⭕"
+          : pType === "n_wave" ? "〰️"
           : null;
 
         // 커스텀 2줄 텍스트가 필요한 타입
         type CustomLabel = { line1: string; line2: string; wide: boolean };
         const customLabel: CustomLabel | null =
-          p.type === "break5ma"   ? { line1: "전량매도 권고", line2: "5MA 깨짐",   wide: true  } :
-          p.type === "ma10_break" ? { line1: "손절 검토",    line2: "10MA 이탈", wide: true  } :
-          p.type === "vol_climax" ? { line1: p.extra === "과열주의" ? "매수클라이맥스" : "패닉셀",
-                                      line2: p.extra ?? "",                        wide: true  } :
-          p.type === "ma240_cross"? { line1: p.label,        line2: "장기추세전환", wide: true  } :
-          p.type === "n_wave"     ? { line1: "N파동 완성",   line2: "추세 확인",  wide: false } :
+          pType === "break5ma"   ? { line1: "전량매도 권고", line2: "5MA 깨짐",    wide: true  } :
+          pType === "ma10_break" ? { line1: "손절 검토",     line2: "10MA 이탈",  wide: true  } :
+          pType === "vol_climax" ? { line1: p.extra === "과열주의" ? "매수클라이맥스" : "패닉셀",
+                                     line2: p.extra ?? "",                         wide: true  } :
+          pType === "ma240_cross"? { line1: p.label,         line2: "장기추세전환", wide: true  } :
+          pType === "n_wave"     ? { line1: "N파동 완성",    line2: "추세 확인",  wide: false } :
           null;
 
         const boxW  = customLabel?.wide ? 56 : 40;
         const boxH  = customLabel ? 40 : 36;
-        const thick = (p.type === "break5ma" || p.type === "ma10_break" || p.type === "ma240_cross") ? 1.8 : 1;
+        const thick = (pType === "break5ma" || pType === "ma10_break" || pType === "ma240_cross") ? 1.8 : 1;
 
         return (
           <g key={pi}>
