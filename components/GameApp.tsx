@@ -924,31 +924,67 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
           down_cont: { color: "#7048e8", bg: "#f3f0ff", border: "#d0bfff", badge: "하락지속", arrow: "▼" },
           down_rev:  { color: "#1971c2", bg: "#e7f5ff", border: "#74c0fc", badge: "하락반전", arrow: "⤵" },
         }[p.cls];
-        const isAbove = p.type === "dead" || p.type === "uppertail";
+        // 위/아래 배치 결정
+        const isAbove = p.type === "dead" || p.type === "uppertail" || p.type === "break5ma"
+          || p.type === "ma10_break" || p.type === "vol_climax" || p.type === "ma240_cross";
         const cy = isAbove ? sy(c.high) - 22 : sy(c.low) + 22;
+
+        // 아이콘
         const shapeEmoji = p.type === "golden" || p.type === "dead" ? "⭐"
           : p.type === "threebar" ? "🕯️"
-          : null; // 꼬리는 원으로
+          : p.type === "break5ma" ? "🔻"
+          : p.type === "ma10_break" ? "🔴"
+          : p.type === "vol_climax" ? "📊"
+          : p.type === "ma240_cross" ? "⭕"
+          : p.type === "n_wave" ? "〰️"
+          : null;
+
+        // 커스텀 2줄 텍스트가 필요한 타입
+        type CustomLabel = { line1: string; line2: string; wide: boolean };
+        const customLabel: CustomLabel | null =
+          p.type === "break5ma"   ? { line1: "전량매도 권고", line2: "5MA 깨짐",   wide: true  } :
+          p.type === "ma10_break" ? { line1: "손절 검토",    line2: "10MA 이탈", wide: true  } :
+          p.type === "vol_climax" ? { line1: p.extra === "과열주의" ? "매수클라이맥스" : "패닉셀",
+                                      line2: p.extra ?? "",                        wide: true  } :
+          p.type === "ma240_cross"? { line1: p.label,        line2: "장기추세전환", wide: true  } :
+          p.type === "n_wave"     ? { line1: "N파동 완성",   line2: "추세 확인",  wide: false } :
+          null;
+
+        const boxW  = customLabel?.wide ? 56 : 40;
+        const boxH  = customLabel ? 40 : 36;
+        const thick = (p.type === "break5ma" || p.type === "ma10_break" || p.type === "ma240_cross") ? 1.8 : 1;
 
         return (
           <g key={pi}>
-            {/* 분류 배지 박스 */}
-            <rect x={cx - 20} y={cy - 19} width={40} height={36} rx={5}
-              fill={clsStyle.bg} fillOpacity={0.95} stroke={clsStyle.color} strokeWidth="1" />
-            {/* 화살표 + 아이콘 */}
+            {/* 배지 박스 */}
+            <rect x={cx - boxW / 2} y={cy - 19} width={boxW} height={boxH} rx={5}
+              fill={clsStyle.bg} fillOpacity={0.95} stroke={clsStyle.color} strokeWidth={thick} />
+            {/* 아이콘 */}
             <text x={cx} y={cy - 7} fontSize="11" textAnchor="middle">
-              {shapeEmoji ?? (p.type === "uppertail" ? "○" : "○")}
+              {shapeEmoji ?? "○"}
             </text>
-            {/* 4분류 배지 텍스트 */}
-            <text x={cx} y={cy + 4} fontSize="7.5" fill={clsStyle.color} textAnchor="middle" fontWeight="bold">
-              {clsStyle.arrow} {clsStyle.badge}
-            </text>
-            {/* 패턴 이름 */}
-            <text x={cx} y={cy + 14} fontSize="7" fill={clsStyle.color} textAnchor="middle" fontWeight="600">
-              {p.label}
-            </text>
+            {/* 텍스트 */}
+            {customLabel ? (
+              <>
+                <text x={cx} y={cy + 4} fontSize="7" fill={clsStyle.color} textAnchor="middle" fontWeight="800">
+                  {customLabel.line1}
+                </text>
+                <text x={cx} y={cy + 14} fontSize="6.5" fill={clsStyle.color} textAnchor="middle" fontWeight="600">
+                  {customLabel.line2}
+                </text>
+              </>
+            ) : (
+              <>
+                <text x={cx} y={cy + 4} fontSize="7.5" fill={clsStyle.color} textAnchor="middle" fontWeight="bold">
+                  {clsStyle.arrow} {clsStyle.badge}
+                </text>
+                <text x={cx} y={cy + 14} fontSize="7" fill={clsStyle.color} textAnchor="middle" fontWeight="600">
+                  {p.label}
+                </text>
+              </>
+            )}
             {/* 연결선 */}
-            <line x1={cx} y1={isAbove ? cy + 17 : cy - 17} x2={cx} y2={isAbove ? sy(c.high) : sy(c.low)}
+            <line x1={cx} y1={isAbove ? cy + boxH - 19 : cy - 17} x2={cx} y2={isAbove ? sy(c.high) : sy(c.low)}
               stroke={clsStyle.color} strokeWidth="1" strokeDasharray="2,2" strokeOpacity="0.5" />
           </g>
         );
@@ -2784,7 +2820,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
   // B안: 차트 윈도우 내 패턴 스캔 — 골든/데드크로스, 윗/아랫꼬리, 양음양/음양음
   const chartPatternMarks = (() => {
     type Cls = "up_cont" | "up_rev" | "down_cont" | "down_rev";
-    const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar" | "pullback"; label: string; cls: Cls }[] = [];
+    const marks: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar" | "pullback" | "break5ma" | "ma10_break" | "vol_climax" | "ma240_cross" | "n_wave"; label: string; cls: Cls; extra?: string }[] = [];
     const usedIdx = new Set<number>(); // 한 캔들에 한 마크만 — 겹침 방지
 
     // 분류 판정 헬퍼: 이 시점의 240MA/10MA 상태로 지속/반전 구분
@@ -2848,6 +2884,89 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         usedIdx.add(i);
       }
     }
+    // 5순위: 급등 후 5MA 이탈 (break5ma) — 최근 N봉 내 +20% 급등 후 5MA 하향 이탈 첫 봉
+    for (let i = 10; i < chartCandles.length; i++) {
+      if (usedIdx.has(i)) continue;
+      const m5cur  = chartMa5[i];
+      const m5prev = chartMa5[i - 1];
+      if (!m5cur || !m5prev) continue;
+      const cur  = chartCandles[i];
+      const prev = chartCandles[i - 1];
+      // 이탈 조건: 직전봉 close > 5MA, 현재봉 close < 5MA
+      if (prev.close <= m5prev || cur.close >= m5cur) continue;
+      // 급등 조건: 최근 10봉 저점 대비 +20% 이상 상승한 구간
+      const slice  = chartCandles.slice(i - 10, i + 1);
+      const lowest = Math.min(...slice.map(c => c.low));
+      const surge  = lowest > 0 ? (cur.high - lowest) / lowest : 0;
+      if (surge < 0.20) continue;
+      marks.push({ idx: i, type: "break5ma", label: "5MA 깨짐", cls: classify(i, false) });
+      usedIdx.add(i);
+    }
+    // 6순위: 10MA 이탈 (ma10_break) — 직전봉 10MA 위 → 현재봉 10MA 아래 첫 봉
+    for (let i = 1; i < chartCandles.length; i++) {
+      if (usedIdx.has(i)) continue;
+      const m10cur  = chartMa10[i];
+      const m10prev = chartMa10[i - 1];
+      if (!m10cur || !m10prev) continue;
+      const cur  = chartCandles[i];
+      const prev = chartCandles[i - 1];
+      if (prev.close <= m10prev || cur.close >= m10cur) continue;
+      marks.push({ idx: i, type: "ma10_break", label: "10MA 이탈", cls: classify(i, false) });
+      usedIdx.add(i);
+    }
+
+    // 7순위: 거래량 클라이맥스 (vol_climax) — 20봉 평균의 300% 이상
+    {
+      const allVols = chartCandles.map(c => c.vol).filter(v => v > 0);
+      const globalAvgVol = allVols.length ? allVols.reduce((a, b) => a + b, 0) / allVols.length : 0;
+      for (let i = 20; i < chartCandles.length; i++) {
+        if (usedIdx.has(i)) continue;
+        const c = chartCandles[i];
+        if (c.vol < globalAvgVol * 3.0) continue;
+        const isUp = c.close >= c.open;
+        // 양봉 = 매수클라이맥스(과열→하락반전 위험), 음봉 = 패닉셀(바닥→상승반전 기대)
+        const cls: "up_rev" | "down_rev" = isUp ? "down_rev" : "up_rev";
+        const extra = isUp ? "과열주의" : "패닉셀";
+        marks.push({ idx: i, type: "vol_climax", label: extra, cls, extra });
+        usedIdx.add(i);
+      }
+    }
+
+    // 8순위: 240MA 돌파/이탈 (ma240_cross) — 직전봉과 현재봉의 240MA 위치 전환
+    for (let i = 1; i < chartCandles.length; i++) {
+      if (usedIdx.has(i)) continue;
+      const m240cur  = chartMa240[i];
+      const m240prev = chartMa240[i - 1];
+      if (!m240cur || !m240prev) continue;
+      const curClose  = chartCandles[i].close;
+      const prevClose = chartCandles[i - 1].close;
+      if (prevClose < m240prev && curClose >= m240cur) {
+        marks.push({ idx: i, type: "ma240_cross", label: "240MA 돌파", cls: "up_rev" });
+        usedIdx.add(i);
+      } else if (prevClose > m240prev && curClose <= m240cur) {
+        marks.push({ idx: i, type: "ma240_cross", label: "240MA 이탈", cls: "down_rev" });
+        usedIdx.add(i);
+      }
+    }
+
+    // 9순위: N자형 파동 완성 (n_wave) — 20봉 내 저점→고점→저점→현재 고점이 이전 고점 돌파
+    for (let i = 10; i < chartCandles.length; i++) {
+      if (usedIdx.has(i)) continue;
+      const window = chartCandles.slice(i - 10, i + 1);
+      // 1차 고점: 앞 5봉 내 최고가
+      const firstHalf  = window.slice(0, 5);
+      const secondHalf = window.slice(5);
+      const peak1 = Math.max(...firstHalf.map(c => c.high));
+      const trough = Math.min(...firstHalf.map(c => c.low));
+      const peak2 = Math.max(...secondHalf.map(c => c.high));
+      const curClose = chartCandles[i].close;
+      // N파동 조건: 2차 고점이 1차 고점 돌파 + 현재봉이 상승 중 + 저점이 1차 고점보다 낮음
+      if (peak2 > peak1 * 1.02 && trough < peak1 && curClose >= peak2 * 0.97) {
+        marks.push({ idx: i, type: "n_wave", label: "N파동", cls: "up_cont" });
+        usedIdx.add(i);
+      }
+    }
+
     // 4순위: 눌림목 끝 지점 (구간 마지막 캔들에 마크)
     // chartPullbackZones는 아래에서 별도 계산, 여기서는 구간 끝점만 마크로 추가
     for (let i = 5; i < chartCandles.length; i++) {
