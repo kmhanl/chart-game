@@ -422,21 +422,30 @@ export default function LobbyClient({ user }: Props) {
   };
 
   // 종목/티커 검색 — Yahoo Finance 검색 API 프록시 사용
+  // 코스피 종목은 기본 검색만으로는 잘 안 잡혀서, 한국 지역(region=KR) 검색을 함께 돌려 병합한다.
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
     setSearchErr("");
     if (query.trim().length < 1) { setSearchResults([]); return; }
     setSearching(true);
     try {
-      const res = await fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`);
-      const json = await res.json();
-      const quotes = (json?.quotes ?? [])
-        .filter((q: { quoteType?: string }) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
-        .map((q: { symbol: string; shortname?: string; longname?: string; exchange?: string }) => ({
-          symbol: q.symbol,
-          name: q.shortname || q.longname || q.symbol,
-          exch: q.exchange ?? "",
-        }));
+      const [globalRes, krRes] = await Promise.all([
+        fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`),
+        fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0&lang=ko-KR&region=KR`),
+      ]);
+      const [globalJson, krJson] = await Promise.all([globalRes.json(), krRes.json()]);
+      const toQuotes = (json: { quotes?: unknown[] }) =>
+        (json?.quotes ?? [])
+          .filter((q: { quoteType?: string }) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
+          .map((q: { symbol: string; shortname?: string; longname?: string; exchange?: string }) => ({
+            symbol: q.symbol,
+            name: q.shortname || q.longname || q.symbol,
+            exch: q.exchange === "KSC" ? "KOSPI" : q.exchange === "KOE" ? "KOSDAQ" : (q.exchange ?? ""),
+          }));
+      const merged = [...toQuotes(globalJson), ...toQuotes(krJson)];
+      // 심볼 기준 중복 제거 (같은 종목이 양쪽에서 나올 수 있음)
+      const seen = new Set<string>();
+      const quotes = merged.filter(q => (seen.has(q.symbol) ? false : (seen.add(q.symbol), true)));
       setSearchResults(quotes);
       if (quotes.length === 0) setSearchErr("검색 결과가 없어요. 정확한 종목명이나 티커를 입력해보세요.");
     } catch {
@@ -446,7 +455,7 @@ export default function LobbyClient({ user }: Props) {
     }
   };
 
-  // 검색된 티커로 직접 게임 시작 — 주봉 50봉
+  // 검색된 티커로 직접 게임 시작 — 상단에서 고른 봉 기준(주봉/월봉)을 그대로 사용
   const handleStartCustom = async (ticker: string, name: string) => {
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) {
@@ -459,16 +468,22 @@ export default function LobbyClient({ user }: Props) {
     setStartingTicker(ticker);
     setSearchErr("");
     try {
-      // 최소 데이터 검증 (50봉 이상 주봉 데이터 있는지)
-      const period1 = Math.floor(new Date("2010-01-01").getTime() / 1000);
+      // 최소 데이터 검증 — 주봉은 50턴 기준 여유분 포함 70봉, 월봉은 최소 50봉 필요
+      const isMonthly = intervalMode === "1mo";
+      const period1 = Math.floor(new Date("2000-01-01").getTime() / 1000);
       const period2 = Math.floor(Date.now() / 1000);
-      const res = await fetch(`/api/yahoo/v8/finance/chart/${ticker}?period1=${period1}&period2=${period2}&interval=1wk&events=div%7Csplit`);
+      const MIN_REQUIRED = isMonthly ? 50 : 70;
+      const res = await fetch(`/api/yahoo/v8/finance/chart/${ticker}?period1=${period1}&period2=${period2}&interval=${intervalMode}&events=div%7Csplit`);
       const json = await res.json();
       const result = json?.chart?.result?.[0];
       const candleCount = result?.timestamp?.length ?? 0;
-      const MIN_REQUIRED = 70; // 50턴 + MA_MIN(15) + 여유분(5)
       if (!result || candleCount < MIN_REQUIRED) {
-        setSearchErr(`"${name}"은(는) 데이터가 부족해 플레이할 수 없어요 (최소 ${MIN_REQUIRED}봉 필요, 현재 ${candleCount}봉).`);
+        const label = isMonthly ? "월봉" : "주봉";
+        setSearchErr(
+          isMonthly
+            ? `"${name}"은(는) 월봉 데이터가 ${MIN_REQUIRED}개월 미만이라 게임을 진행할 수 없어요 (현재 ${candleCount}개월치 데이터). 상장한 지 얼마 안 됐거나 데이터가 부족한 종목일 수 있어요. 주봉으로 다시 시도해보세요.`
+            : `"${name}"은(는) 데이터가 부족해 플레이할 수 없어요 (최소 ${MIN_REQUIRED}${label} 필요, 현재 ${candleCount}${label}).`
+        );
         setStartingTicker(null);
         return;
       }
@@ -477,7 +492,7 @@ export default function LobbyClient({ user }: Props) {
         market: "CUSTOM",
         ticker,
         tickerName: name,
-        interval: "1wk",
+        interval: intervalMode,
         initCash: String(asset),
       });
       router.push(`/game?${params.toString()}`);
@@ -924,7 +939,9 @@ export default function LobbyClient({ user }: Props) {
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: C.muted, marginTop: 8, lineHeight: 1.6 }}>
-                  검색한 종목으로 주봉 50봉 기준 게임을 바로 시작합니다.
+                  검색한 종목으로 <b>{intervalMode === "1mo" ? "월봉" : "주봉"}</b> 50봉 기준 게임을 바로 시작합니다.
+                  {intervalMode === "1mo" && " 월봉 데이터가 50개월 미만인 종목은 시작할 수 없어요."}
+                  {" "}봉 기준은 위 "봉 기준" 토글에서 바꿀 수 있어요.
                 </div>
               </div>
             )}
