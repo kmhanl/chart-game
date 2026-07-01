@@ -434,10 +434,17 @@ export default function LobbyClient({ user }: Props) {
         fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0&lang=ko-KR&region=KR`),
       ]);
       const [globalJson, krJson] = await Promise.all([globalRes.json(), krRes.json()]);
-      const toQuotes = (json: { quotes?: unknown[] }) =>
+      interface YahooQuoteRaw {
+        quoteType?: string;
+        symbol: string;
+        shortname?: string;
+        longname?: string;
+        exchange?: string;
+      }
+      const toQuotes = (json: { quotes?: YahooQuoteRaw[] }) =>
         (json?.quotes ?? [])
-          .filter((q: { quoteType?: string }) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
-          .map((q: { symbol: string; shortname?: string; longname?: string; exchange?: string }) => ({
+          .filter((q: YahooQuoteRaw) => q.quoteType === "EQUITY" || q.quoteType === "ETF")
+          .map((q: YahooQuoteRaw) => ({
             symbol: q.symbol,
             name: q.shortname || q.longname || q.symbol,
             exch: q.exchange === "KSC" ? "KOSPI" : q.exchange === "KOE" ? "KOSDAQ" : (q.exchange ?? ""),
