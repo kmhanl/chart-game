@@ -764,7 +764,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
   width?: number; height?: number; style?: React.CSSProperties; svgHeight?: string;
   markers?: { idx:number; type:"매수"|"매도"; source?:"sim"|"mine"; gap10?:number; avgCost?:number; pnlPct?:number; qty?:number; krwPrice?:number }[];
   avgCostLines?: { price: number; source: "sim"|"mine"; label?: string }[];
-  patternMarks?: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar" | "pullback"; label: string; cls: "up_cont" | "up_rev" | "down_cont" | "down_rev" }[];
+  patternMarks?: { idx: number; type: "golden" | "dead" | "uppertail" | "lowertail" | "threebar" | "pullback" | "break5ma" | "ma10_break" | "vol_climax" | "ma240_cross" | "n_wave"; label: string; cls: "up_cont" | "up_rev" | "down_cont" | "down_rev"; extra?: string }[];
   pullbackZones?: { startIdx: number; endIdx: number }[];
 }) {
   if (!candles.length) return null;
