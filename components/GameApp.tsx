@@ -892,7 +892,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
         );
       })}
       {/* B안: 패턴 오버레이 — 4색 분류 체계 + 눌림목(주황, 별도 카테고리) */}
-      {patternMarks && patternMarks.map((p, pi) => {
+      {patternMarks && [...patternMarks].reverse().map((p, pi) => {
         if (!candles[p.idx]) return null;
         const c = candles[p.idx];
         const cx = sx(p.idx);
@@ -2950,24 +2950,22 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
       }
     }
 
-    // 9순위: N자형 파동 완성 (n_wave)
-    // 방법2: 직전 N파동 2차 고점 대비 5% 이상 갱신 시에만 새 마크
-    // 방법4: 윈도우 20봉(앞10/뒤10)으로 확대해 소파동 필터링
-    let lastNWavePeak2 = 0;
-    for (let i = 20; i < chartCandles.length; i++) {
+    // 9순위: N자형 파동 완성 (n_wave) — 20봉 내 저점→고점→저점→현재 고점이 이전 고점 돌파
+    for (let i = 10; i < chartCandles.length; i++) {
       if (usedIdx.has(i)) continue;
-      const win        = chartCandles.slice(i - 20, i + 1);
-      const firstHalf  = win.slice(0, 10);
-      const secondHalf = win.slice(10);
-      const peak1    = Math.max(...firstHalf.map(c => c.high));
-      const trough   = Math.min(...firstHalf.map(c => c.low));
-      const peak2    = Math.max(...secondHalf.map(c => c.high));
+      const window = chartCandles.slice(i - 10, i + 1);
+      // 1차 고점: 앞 5봉 내 최고가
+      const firstHalf  = window.slice(0, 5);
+      const secondHalf = window.slice(5);
+      const peak1 = Math.max(...firstHalf.map(c => c.high));
+      const trough = Math.min(...firstHalf.map(c => c.low));
+      const peak2 = Math.max(...secondHalf.map(c => c.high));
       const curClose = chartCandles[i].close;
-      if (!(peak2 > peak1 * 1.02 && trough < peak1 && curClose >= peak2 * 0.97)) continue;
-      if (peak2 <= lastNWavePeak2 * 1.05) continue;
-      lastNWavePeak2 = peak2;
-      marks.push({ idx: i, type: "n_wave", label: "N파동", cls: "up_cont" });
-      usedIdx.add(i);
+      // N파동 조건: 2차 고점이 1차 고점 돌파 + 현재봉이 상승 중 + 저점이 1차 고점보다 낮음
+      if (peak2 > peak1 * 1.02 && trough < peak1 && curClose >= peak2 * 0.97) {
+        marks.push({ idx: i, type: "n_wave", label: "N파동", cls: "up_cont" });
+        usedIdx.add(i);
+      }
     }
 
     // 4순위: 눌림목 끝 지점 (구간 마지막 캔들에 마크)
