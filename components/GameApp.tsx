@@ -892,7 +892,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
         );
       })}
       {/* B안: 패턴 오버레이 — 4색 분류 체계 + 눌림목(주황, 별도 카테고리) */}
-      {patternMarks && [...patternMarks].reverse().map((p, pi) => {
+      {patternMarks && [...patternMarks].sort((a, b) => a.idx - b.idx).map((p, pi) => {
         if (!candles[p.idx]) return null;
         const c = candles[p.idx];
         const cx = sx(p.idx);
