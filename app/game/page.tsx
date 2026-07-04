@@ -17,7 +17,7 @@ export default async function GamePage({
 
   const params = await searchParams;
   const market    = (params.market   === "QQQ" ? "QQQ"  : "KOSPI") as "KOSPI" | "QQQ";
-  const interval  = (params.interval === "1mo" ? "1mo"  : "1wk")   as "1wk" | "1mo";
+  const interval  = (params.interval === "1mo" ? "1mo" : params.interval === "1d" ? "1d" : "1wk") as "1wk" | "1mo" | "1d";
   const mission   = params.mission ?? null;
   const initCash  = params.initCash ? parseInt(params.initCash) : 10_000_000;
   const customTicker     = params.market === "CUSTOM" ? (params.ticker ?? null) : null;

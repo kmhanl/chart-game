@@ -21,7 +21,7 @@ interface TurnScore { score: number; maxScore: number; }
 interface Props {
   user: User;
   initialMarket: "KOSPI" | "QQQ";
-  initialInterval: "1wk" | "1mo";
+  initialInterval: "1wk" | "1mo" | "1d";
   initialMission: string | null;
   initialCash?: number;
   customTicker?: string | null;

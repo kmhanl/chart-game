@@ -178,6 +178,79 @@ const fmtKRW = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
 const fmtPct = (n: number) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 
 // ── 종목 유니버스 (섹터별 분류)
+// 코스닥 한글 검색용 로컬 데이터 (Yahoo API 한글 검색 미지원으로 로컬 매칭)
+const KOSDAQ_KR: { name: string; ticker: string }[] = [
+  // IT/소프트웨어
+  { name: "카카오게임즈", ticker: "293490.KQ" }, { name: "크래프톤", ticker: "259960.KQ" },
+  { name: "펄어비스", ticker: "263750.KQ" }, { name: "컴투스", ticker: "078340.KQ" },
+  { name: "위메이드", ticker: "112040.KQ" }, { name: "선데이토즈", ticker: "123420.KQ" },
+  { name: "넥슨게임즈", ticker: "225570.KQ" }, { name: "더블유게임즈", ticker: "192080.KQ" },
+  { name: "드래곤플라이", ticker: "030350.KQ" }, { name: "조이시티", ticker: "067000.KQ" },
+  { name: "NHN", ticker: "181710.KQ" }, { name: "네오위즈", ticker: "095660.KQ" },
+  { name: "웹젠", ticker: "069080.KQ" }, { name: "데브시스터즈", ticker: "194480.KQ" },
+  // 바이오/제약
+  { name: "셀트리온헬스케어", ticker: "091990.KQ" }, { name: "알테오젠", ticker: "196170.KQ" },
+  { name: "에코프로", ticker: "086520.KQ" }, { name: "에코프로비엠", ticker: "247540.KQ" },
+  { name: "셀트리온제약", ticker: "068760.KQ" }, { name: "메디톡스", ticker: "086900.KQ" },
+  { name: "파마리서치", ticker: "214450.KQ" }, { name: "레고켐바이오", ticker: "141080.KQ" },
+  { name: "오스코텍", ticker: "039200.KQ" }, { name: "휴젤", ticker: "145020.KQ" },
+  { name: "클래시스", ticker: "214150.KQ" }, { name: "리가켐바이오", ticker: "141080.KQ" },
+  { name: "파멥신", ticker: "208340.KQ" }, { name: "보령", ticker: "003850.KQ" },
+  { name: "동아ST", ticker: "170900.KQ" }, { name: "신라젠", ticker: "215600.KQ" },
+  { name: "HLB", ticker: "028300.KQ" }, { name: "HLB생명과학", ticker: "067630.KQ" },
+  { name: "유바이오로직스", ticker: "206650.KQ" }, { name: "삼천당제약", ticker: "000250.KQ" },
+  { name: "동국제약", ticker: "086450.KQ" }, { name: "고려제약", ticker: "014570.KQ" },
+  // 반도체/전자부품
+  { name: "리노공업", ticker: "058470.KQ" }, { name: "솔브레인", ticker: "357780.KQ" },
+  { name: "하나마이크론", ticker: "067310.KQ" }, { name: "이오테크닉스", ticker: "039030.KQ" },
+  { name: "원익IPS", ticker: "240810.KQ" }, { name: "테크윙", ticker: "089030.KQ" },
+  { name: "ISC", ticker: "095340.KQ" }, { name: "티씨케이", ticker: "064760.KQ" },
+  { name: "엔씨앤", ticker: "072010.KQ" }, { name: "코미코", ticker: "183300.KQ" },
+  { name: "유진테크", ticker: "084370.KQ" }, { name: "넥스틴", ticker: "348210.KQ" },
+  { name: "케이씨텍", ticker: "281820.KQ" }, { name: "피에스케이", ticker: "319660.KQ" },
+  { name: "한미반도체", ticker: "042700.KQ" }, { name: "파크시스템스", ticker: "140860.KQ" },
+  { name: "비씨엔씨", ticker: "277650.KQ" }, { name: "오로스테크놀로지", ticker: "322310.KQ" },
+  { name: "에스앤에스텍", ticker: "101490.KQ" }, { name: "솔레온", ticker: "338570.KQ" },
+  // 2차전지/소재
+  { name: "엘앤에프", ticker: "066970.KQ" }, { name: "천보", ticker: "278280.KQ" },
+  { name: "동화기업", ticker: "025900.KQ" }, { name: "후성", ticker: "093370.KQ" },
+  { name: "나노신소재", ticker: "121600.KQ" }, { name: "이엔드디", ticker: "101360.KQ" },
+  { name: "피엔티", ticker: "137400.KQ" }, { name: "에코프로에이치엔", ticker: "383310.KQ" },
+  { name: "SK아이이테크놀로지", ticker: "361610.KQ" }, { name: "코스모신소재", ticker: "005070.KQ" },
+  // 통신/IT인프라
+  { name: "NAVER", ticker: "035420.KQ" }, { name: "카카오", ticker: "035720.KQ" },
+  { name: "비트컴퓨터", ticker: "032850.KQ" }, { name: "케이아이엔엑스", ticker: "093320.KQ" },
+  { name: "가비아", ticker: "079940.KQ" }, { name: "아이티센", ticker: "124500.KQ" },
+  { name: "더존비즈온", ticker: "012510.KQ" }, { name: "한글과컴퓨터", ticker: "030520.KQ" },
+  { name: "이스트소프트", ticker: "047560.KQ" }, { name: "위세아이텍", ticker: "065370.KQ" },
+  // 의료기기/헬스케어
+  { name: "인바디", ticker: "041830.KQ" }, { name: "뷰웍스", ticker: "100120.KQ" },
+  { name: "오스템임플란트", ticker: "048260.KQ" }, { name: "덴티움", ticker: "145720.KQ" },
+  { name: "레이", ticker: "228670.KQ" }, { name: "바텍", ticker: "043150.KQ" },
+  { name: "루트로닉", ticker: "085370.KQ" }, { name: "제이시스메디칼", ticker: "287410.KQ" },
+  { name: "원텍", ticker: "336570.KQ" }, { name: "비올", ticker: "335890.KQ" },
+  // 보안/AI
+  { name: "슈프리마에이치큐", ticker: "094840.KQ" }, { name: "슈프리마", ticker: "236Identity.KQ" },
+  { name: "아이디스", ticker: "143160.KQ" }, { name: "이노뎁", ticker: "303530.KQ" },
+  { name: "크리니티", ticker: "200130.KQ" }, { name: "솔루션", ticker: "205100.KQ" },
+  { name: "콤텍시스템", ticker: "031820.KQ" }, { name: "시큐브", ticker: "131090.KQ" },
+  { name: "라온시큐어", ticker: "042510.KQ" }, { name: "아이오케이", ticker: "078600.KQ" },
+  // 엔터/미디어
+  { name: "에스엠", ticker: "041510.KQ" }, { name: "JYP엔터", ticker: "035900.KQ" },
+  { name: "와이지엔터테인먼트", ticker: "122870.KQ" }, { name: "하이브", ticker: "352820.KQ" },
+  { name: "에프엔씨엔터", ticker: "173940.KQ" }, { name: "큐브엔터", ticker: "182360.KQ" },
+  { name: "스튜디오드래곤", ticker: "253450.KQ" }, { name: "키이스트", ticker: "054780.KQ" },
+  // 제조/기계
+  { name: "고영", ticker: "098460.KQ" }, { name: "제우스", ticker: "079370.KQ" },
+  { name: "에스에프에이", ticker: "056190.KQ" }, { name: "이녹스첨단소재", ticker: "272290.KQ" },
+  { name: "한화시스템", ticker: "272210.KQ" }, { name: "LIG넥스원", ticker: "079550.KQ" },
+  { name: "기가비스", ticker: "420120.KQ" }, { name: "이오플로우", ticker: "294090.KQ" },
+  // 금융
+  { name: "카카오뱅크", ticker: "323410.KQ" }, { name: "카카오페이", ticker: "377300.KQ" },
+  { name: "케이뱅크", ticker: "279570.KQ" }, { name: "비바리퍼블리카", ticker: "000000.KQ" },
+  { name: "크래프톤", ticker: "259960.KQ" }, { name: "카카오게임즈", ticker: "293490.KQ" },
+];
+
 const UNIVERSE_DISPLAY = {
   KOSPI: [
     { sector: "반도체/전자", stocks: [
@@ -324,7 +397,7 @@ export default function LobbyClient({ user }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient() as any;
 
-  const [intervalMode, setIntervalMode] = useState<"1wk" | "1mo">("1wk");
+  const [intervalMode, setIntervalMode] = useState<"1wk" | "1mo" | "1d">("1wk");
   const [mounted,      setMounted]      = useState(false);
   const [currentAsset, setCurrentAsset] = useState<number | null>(null);
   const [recentSessions, setRecentSessions] = useState<GameSession[]>([]);
@@ -422,13 +495,20 @@ export default function LobbyClient({ user }: Props) {
   };
 
   // ── 한글 검색용 로컬 종목 플랫 리스트 (KOSPI/KOSDAQ 한글 이름 포함)
-  const LOCAL_KR_STOCKS = Object.values(UNIVERSE_DISPLAY).flat().flatMap(
-    (group) => (group as { sector: string; stocks: { name: string; ticker: string }[] }).stocks
-  ).map(s => ({
-    symbol: s.ticker,
-    name: s.name,
-    exch: s.ticker.endsWith(".KQ") ? "KOSDAQ" : s.ticker.endsWith(".KS") ? "KOSPI" : "US",
-  }));
+  const LOCAL_KR_STOCKS = [
+    ...Object.values(UNIVERSE_DISPLAY).flat().flatMap(
+      (group) => (group as { sector: string; stocks: { name: string; ticker: string }[] }).stocks
+    ).map(s => ({
+      symbol: s.ticker,
+      name: s.name,
+      exch: s.ticker.endsWith(".KQ") ? "KOSDAQ" : s.ticker.endsWith(".KS") ? "KOSPI" : "US",
+    })),
+    ...KOSDAQ_KR.map(s => ({
+      symbol: s.ticker,
+      name: s.name,
+      exch: "KOSDAQ",
+    })),
+  ].filter((v, i, a) => a.findIndex(x => x.symbol === v.symbol) === i); // 중복 제거
 
   // 종목/티커 검색
   // 1) 한글 입력 시 로컬 리스트에서 이름/티커 매칭 우선
@@ -528,10 +608,10 @@ export default function LobbyClient({ user }: Props) {
       const result = json?.chart?.result?.[0];
       const candleCount = result?.timestamp?.length ?? 0;
       if (!result || candleCount < MIN_REQUIRED) {
-        const label = isMonthly ? "월봉" : "주봉";
+        const label = isMonthly ? "월봉" : isDaily ? "일봉" : "주봉";
         setSearchErr(
           isMonthly
-            ? `"${name}"은(는) 월봉 데이터가 ${MIN_REQUIRED}개월 미만이라 게임을 진행할 수 없어요 (현재 ${candleCount}개월치 데이터). 상장한 지 얼마 안 됐거나 데이터가 부족한 종목일 수 있어요. 주봉으로 다시 시도해보세요.`
+            ? `"${name}"은(는) 월봉 데이터가 ${MIN_REQUIRED}개월 미만이라 게임을 진행할 수 없어요 (현재 ${candleCount}개월치 데이터). 주봉으로 다시 시도해보세요.`
             : `"${name}"은(는) 데이터가 부족해 플레이할 수 없어요 (최소 ${MIN_REQUIRED}${label} 필요, 현재 ${candleCount}${label}).`
         );
         setStartingTicker(null);
@@ -945,9 +1025,9 @@ export default function LobbyClient({ user }: Props) {
             {showCustomSearch && (
               <div style={{ marginTop: 10, textAlign: "left" }}>
 
-                {/* 봉 선택 — 검색창 바로 위 */}
+                {/* 봉 선택 — 검색창 바로 위 (주봉 디폴트) */}
                 <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  {([["1wk","📊 주봉"],["1mo","📅 월봉"]] as const).map(([val, lbl]) => {
+                  {([["1wk","📊 주봉"],["1mo","📅 월봉"],["1d","📈 일봉"]] as ["1wk"|"1mo"|"1d", string][]).map(([val, lbl]) => {
                     const active = intervalMode === val;
                     return (
                       <button key={val} onClick={() => setIntervalMode(val)} style={{
@@ -955,7 +1035,7 @@ export default function LobbyClient({ user }: Props) {
                         border: `1.5px solid ${active ? C.accent : C.border2}`,
                         background: active ? "#f3f0ff" : C.bg,
                         color: active ? C.accent : C.sub,
-                        fontWeight: active ? 800 : 500, fontSize: 13, cursor: "pointer",
+                        fontWeight: active ? 800 : 500, fontSize: 12, cursor: "pointer",
                       }}>{lbl}</button>
                     );
                   })}
@@ -1012,8 +1092,11 @@ export default function LobbyClient({ user }: Props) {
                 {/* 안내 텍스트 */}
                 <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.7, padding: "6px 2px" }}>
                   💡 한글로 검색하면 국내 종목을 바로 찾을 수 있어요 (예: 삼성전자, 하이닉스)<br/>
-                  선택한 종목으로 <b style={{ color: C.accent }}>{intervalMode === "1mo" ? "월봉" : "주봉"}</b> 50봉 기준 게임을 시작합니다.
+                  선택한 종목으로 <b style={{ color: C.accent }}>
+                    {intervalMode === "1mo" ? "월봉" : intervalMode === "1d" ? "일봉" : "주봉"}
+                  </b> 50봉 기준 게임을 시작합니다.
                   {intervalMode === "1mo" && <span style={{ color: C.red }}> 월봉은 50개월 이상 데이터가 필요해요.</span>}
+                  {intervalMode === "1d" && <span style={{ color: "#f97316" }}> 일봉은 최근 50일 기준으로 시작합니다.</span>}
                 </div>
               </div>
             )}
