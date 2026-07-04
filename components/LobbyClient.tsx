@@ -600,6 +600,7 @@ export default function LobbyClient({ user }: Props) {
     try {
       // 최소 데이터 검증 — 주봉은 50턴 기준 여유분 포함 70봉, 월봉은 최소 50봉 필요
       const isMonthly = intervalMode === "1mo";
+      const isDaily   = intervalMode === "1d";
       const period1 = Math.floor(new Date("2000-01-01").getTime() / 1000);
       const period2 = Math.floor(Date.now() / 1000);
       const MIN_REQUIRED = isMonthly ? 50 : 70;
