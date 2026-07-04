@@ -230,7 +230,8 @@ const KOSDAQ_KR: { name: string; ticker: string }[] = [
   { name: "루트로닉", ticker: "085370.KQ" }, { name: "제이시스메디칼", ticker: "287410.KQ" },
   { name: "원텍", ticker: "336570.KQ" }, { name: "비올", ticker: "335890.KQ" },
   // 보안/AI
-  { name: "슈프리마에이치큐", ticker: "094840.KQ" }, { name: "슈프리마", ticker: "236Identity.KQ" },
+  { name: "슈프리마에이치큐", ticker: "094840.KQ" },
+  { name: "주성엔지니어링", ticker: "036930.KQ" }, { name: "슈프리마", ticker: "236Identity.KQ" },
   { name: "아이디스", ticker: "143160.KQ" }, { name: "이노뎁", ticker: "303530.KQ" },
   { name: "크리니티", ticker: "200130.KQ" }, { name: "솔루션", ticker: "205100.KQ" },
   { name: "콤텍시스템", ticker: "031820.KQ" }, { name: "시큐브", ticker: "131090.KQ" },
@@ -318,6 +319,7 @@ const UNIVERSE_DISPLAY = {
       { name: "한국전력", ticker: "015760.KS" },
       { name: "코웨이", ticker: "021240.KS" },
       { name: "슈프리마에이치큐", ticker: "094840.KQ" },
+  { name: "주성엔지니어링", ticker: "036930.KQ" },
     ]},
   ],
   QQQ: [

@@ -3200,7 +3200,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
           <button onClick={onBackToLobby} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: "2px 4px", fontFamily: "inherit", flexShrink: 0, whiteSpace: "nowrap" }}>← 로비</button>
           <span style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", flexShrink: 0 }}>차트게임 {isQQQ ? "🇺🇸" : "🇰🇷"}</span>
           <span style={{ fontSize: 10, color: C.muted, background: C.surface, padding: "2px 6px", borderRadius: 5, border: `1px solid ${C.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>{market === "CUSTOM" ? "검색" : market}</span>
-          {stockMeta?.name && (
+          {market === "CUSTOM" && stockMeta?.name && (
             <span style={{ fontSize: 11, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1 }}>{stockMeta.name}</span>
           )}
           <span style={{ fontSize: 10, color: C.accent, background: "#f3f0ff", padding: "2px 6px", borderRadius: 5, border: "1px solid #d0bfff", flexShrink: 0, whiteSpace: "nowrap" }}>{intervalLabel}</span>
