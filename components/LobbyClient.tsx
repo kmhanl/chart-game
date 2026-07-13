@@ -551,9 +551,12 @@ export default function LobbyClient({ user }: Props) {
         longname?: string;
         exchange?: string;
       }
+      // EQUITY·ETF 외 일부 해외 주식이 다른 quoteType으로 반환되는 경우가 있어
+      // 불필요한 타입(펀드·옵션·선물·인덱스·통화)만 제외하는 방식으로 완화
+      const EXCLUDE_TYPES = new Set(["MUTUALFUND", "FUTURE", "OPTION", "INDEX", "CURRENCY", "CRYPTOCURRENCY"]);
       const toQuotes = (json: { quotes?: YahooQuoteRaw[] }) =>
         (json?.quotes ?? [])
-          .filter((q2: YahooQuoteRaw) => q2.quoteType === "EQUITY" || q2.quoteType === "ETF")
+          .filter((q2: YahooQuoteRaw) => !EXCLUDE_TYPES.has((q2.quoteType ?? "").toUpperCase()))
           .map((q2: YahooQuoteRaw) => ({
             symbol: q2.symbol,
             name: q2.shortname || q2.longname || q2.symbol,
