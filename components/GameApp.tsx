@@ -985,7 +985,7 @@ function CandleChart({ candles, ma5, ma10, ma240, width = 700, height = 270, sty
         const bT = sy(Math.max(c.open, c.close)), bH = Math.max(1, sy(Math.min(c.open, c.close)) - bT);
         return <g key={i}><line x1={x} y1={sy(c.high)} x2={x} y2={sy(c.low)} stroke={col} strokeWidth="1" /><rect x={x - cw / 2} y={bT} width={cw} height={bH} fill={col} /></g>;
       })}
-      {maPath(ma240, "#adb5bd")}{maPath(ma10, "#f97316")}{maPath(ma5, "#7048e8")}
+      {maPath(ma240, "#adb5bd")}{maPath(ma10, "#1971c2")}{maPath(ma5, "#f97316")}
       <line x1={PAD.l + W} y1={PAD.t} x2={PAD.l + W} y2={PAD.t + H} stroke="#dee2e6" />
     </svg>
   );
@@ -1676,7 +1676,7 @@ function ResultReport({ trades, turnScores, totalAsset, initCash, stockMeta, mar
                           const bT=sy(Math.max(c.open,c.close)), bH=Math.max(1,sy(Math.min(c.open,c.close))-bT);
                           return <g key={i}><line x1={x} y1={sy(c.high)} x2={x} y2={sy(c.low)} stroke={col} strokeWidth="0.8"/><rect x={x-cw/2} y={bT} width={cw} height={bH} fill={col}/></g>;
                         })}
-                        {maPath(ma240,"#adb5bd")}{maPath(ma10,"#f97316")}{maPath(ma5,"#7048e8")}
+                        {maPath(ma240,"#adb5bd")}{maPath(ma10,"#1971c2")}{maPath(ma5,"#f97316")}
                         {/* 거래 마커 */}
                         {selectedTrade && (() => {
                           const li = candles.length - 1;
@@ -3255,7 +3255,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
         <div style={{ background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden", height: "100%", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "4px 10px", display: "flex", flexDirection: "column", gap: 3, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {[["5MA","#7048e8"],["10MA","#f97316"],["240MA","#adb5bd"]].map(([l,col]) => (
+              {[["5MA","#f97316"],["10MA","#1971c2"],["240MA","#adb5bd"]].map(([l,col]) => (
                 <span key={l} style={{ fontSize: 9, color: col, display: "flex", alignItems: "center", gap: 2 }}>
                   <span style={{ display: "inline-block", width: 12, height: 2, background: col, borderRadius: 1 }} />{l}
                 </span>
@@ -3348,7 +3348,7 @@ export default function GameApp({ initialMarket, initialInterval, initialMission
 
       {/* MA 상태 + 거래량 카드 (4개) */}
       <div style={{ padding: "3px 10px 0", display: "flex", gap: 4, flexShrink: 0 }}>
-        {([{ label:"5MA", st: maStatus5, col:"#7048e8", gap: gap5 }, { label:"10MA", st: maStatus10, col:"#f97316", gap: gap10 }, { label:"240MA", st: maStatus240, col:"#adb5bd", gap: gap240 }]).map(({ label, st, col, gap }) => {
+        {([{ label:"5MA", st: maStatus5, col:"#f97316", gap: gap5 }, { label:"10MA", st: maStatus10, col:"#1971c2", gap: gap10 }, { label:"240MA", st: maStatus240, col:"#adb5bd", gap: gap240 }]).map(({ label, st, col, gap }) => {
           const isOver10 = label === "10MA" && overheat10;
           const fmtGap = (g: number | null) => g === null ? "—" : (g >= 0 ? "+" : "") + g.toFixed(1) + "%";
           const gapColor = gap === null ? C.muted : gap > 0 ? "#e03131" : "#1971c2";

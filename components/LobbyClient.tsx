@@ -372,6 +372,9 @@ const UNIVERSE_DISPLAY = {
       { name: "Airbnb", ticker: "ABNB" },
       { name: "PayPal", ticker: "PYPL" },
     ]},
+    { sector: "금융", stocks: [
+      { name: "FICO", ticker: "FICO" },
+    ]},
   ],
 };
 
